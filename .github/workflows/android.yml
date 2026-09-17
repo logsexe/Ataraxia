@@ -32,3 +32,9 @@ jobs:
         run: node --check app/src/main/assets/filter.js
       - name: Build APK
         run: ./gradlew --no-daemon :app:assembleDebug
+      - name: Upload pilot APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ataraxia-v0.1-pilot
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
