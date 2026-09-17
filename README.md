@@ -8,7 +8,7 @@ An Instagram web client designed to make checking in finite. Free, MIT-licensed 
 
 ## Install the pilot
 
-1. Build the pilot from source with Android Studio or download it from the repository's Releases page once the first signed release is published.
+1. Build the pilot from source with Android Studio or download the test-signed APK from [Releases](https://github.com/logsexe/Ataraxia/releases). See [v0.1.1 installation and signing notes](docs/RELEASE-0.1.1.md).
 2. Allow installation from the browser/files app only when needed, install, and turn that installation permission back off afterwards. If your Owner policy disables installation in secondary users, install via Owner and use its “Install available apps” control instead.
 3. Open Ataraxia, read the pilot notice, and choose **Open Instagram inbox**.
 4. Log in on Instagram's own webpage with your usual username/password and 2FA. Facebook sign-in/pop-ups are not supported. The app does not provide a separate credential form.
@@ -22,7 +22,7 @@ This is a pilot, not a production release or independently audited app. Keep the
 - Blocks Instagram `/reel`, `/reels`, `/explore` and `/tv` routes; hides matching links inside the website.
 - Defaults: 10 identified feed posts, 5 browsing minutes per session, 15 browsing minutes per day, 10-minute cooldown after a capped session.
 - Counters persist locally across app restarts. A local calendar-day change resets the daily time allowance. Login and direct-message routes remain exempt.
-- Best-effort filtering of recognised Sponsored/suggested labels in feed article headers (English and Afrikaans), plus a small explicit advertising-host blocklist.
+- Best-effort filtering of recognised Sponsored/suggested labels in feed metadata (English and Afrikaans), plus a small explicit advertising-host blocklist.
 - Allows user-selected image/video uploads through Android's system document picker. No broad photo-library permission.
 - Settings can clear the app's Instagram cookies, website storage and cache.
 
@@ -32,7 +32,7 @@ This is a pilot, not a production release or independently audited app. Keep the
 - The website still selects content. This does not replace Meta's recommendation algorithm or guarantee a chronological/following-only feed.
 - Ad/suggestion detection and post counting depend on website markup. Some feeds may not expose supported article/permalink structures. Native time limits remain independent of that markup. No promise of zero ads or tracking.
 - SPA route enforcement includes a native one-second check; unusual navigation may briefly render before being blocked. Ordinary blocked links are intercepted directly.
-- An identified post is counted when it enters the visible feed area, not after a proven reading time. Large viewports can show more than one at once. No cap is applied to messages.
+- An identified post is counted when it enters or is crossed by the visible feed area, not after a proven reading time. Large viewports can show more than one at once. No cap is applied to messages.
 - No native calls, push/background notifications, downloads, camera capture or microphone support in this pilot. User-selected uploads need device/live-site testing.
 - Instagram may reject embedded browsers or change login, messaging, verification or feed layouts. Login/DM compatibility with a real account has NOT been tested here.
 - The app needs network connectivity and a current Android System WebView/GrapheneOS WebView. Internet is its only manifest permission. No Google Play Services SDK is bundled.

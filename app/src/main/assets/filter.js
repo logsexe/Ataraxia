@@ -1,4 +1,4 @@
-/* Ataraxia 0.1.0 — local Instagram rules. No network calls, credentials or message collection. */
+/* Ataraxia 0.1.1 — local Instagram rules. No network calls, credentials or message collection. */
 (function () {
   'use strict';
   if (window.top !== window || !/^https:\/\/(www\.)?instagram\.com(?::443)?\//i.test(location.href)) return;
@@ -6,11 +6,16 @@
   const seen = new Set();
   let hiddenAds = 0;
   let scheduled = false;
+  let previousY = null;
+  let previousBounds = new WeakMap();
+  let limit = 500;
+  const normalise = text => (text || '').replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const updateCap = () => document.documentElement.toggleAttribute('data-quiet-capped', isFeed() && seen.size >= limit);
   const blockedPath = p => /^\/(reels?|explore|tv)(\/|$)/i.test(p.replace(/\/+/g, '/'));
   const isFeed = () => location.pathname === '/';
   const labels = new Set(['sponsored', 'geborg', 'geborgde', 'suggested for you', 'voorgestel vir jou']);
   const style = document.createElement('style');
-  style.textContent = '[data-quiet-hidden="true"]{display:none!important}html{scroll-behavior:auto!important}';
+  style.textContent = '[data-quiet-hidden="true"]{display:none!important}html{scroll-behavior:auto!important}html[data-quiet-capped] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-capped]::after{content:"Session post limit reached. Use Inbox below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}';
   (document.head || document.documentElement).appendChild(style);
   const hide = el => { if (el.dataset.quietHidden !== 'true') el.dataset.quietHidden = 'true'; };
   function scan() {
@@ -22,31 +27,49 @@
       } catch (_) { }
     }
     // Never inspect message bodies: sponsored/suggestion filtering is restricted to the home feed.
-    if (!isFeed()) return;
-    for (const article of document.querySelectorAll('article')) {
+    if (!isFeed()) { previousY = null; previousBounds = new WeakMap(); updateCap(); return; }
+    const currentY = window.scrollY;
+    const low = Math.min(previousY === null ? currentY : previousY, currentY) + 80;
+    const high = Math.max(previousY === null ? currentY : previousY, currentY) + innerHeight;
+    previousY = currentY;
+    for (const article of document.querySelectorAll('article,[role="article"]')) {
       let sponsored = false;
-      // Restrict label matching to header-like elements; don't hide posts for captions discussing ads.
-      for (const el of article.querySelectorAll('header span, header a, [role="button"] span, a[href*="/ads/"]')) {
-        if (labels.has((el.textContent || '').trim().toLowerCase()) || (el.getAttribute('href') || '').includes('/ads/')) {
-          sponsored = true; break;
-        }
+      // Match metadata before the main media, never arbitrary caption text.
+      const media = article.querySelector('video, img:not([alt*="profile" i])');
+      for (const el of article.querySelectorAll('header, header span, header a, span, [aria-label], a[href*="/ads/"]')) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) continue;
+        const header = el.closest('header');
+        const beforeMedia = media && Boolean(el.compareDocumentPosition(media) & Node.DOCUMENT_POSITION_FOLLOWING)
+          && !el.contains(media);
+        if (!header && !beforeMedia) continue;
+        const text = normalise(el.textContent);
+        const aria = normalise(el.getAttribute('aria-label'));
+        if (labels.has(text) || labels.has(aria)) { sponsored = true; break; }
       }
       if (sponsored && article.dataset.quietHidden !== 'true') { hide(article); hiddenAds++; }
       if (article.dataset.quietHidden === 'true') continue;
       const bounds = article.getBoundingClientRect();
-      if (bounds.bottom <= 80 || bounds.top >= innerHeight * 0.8 || bounds.width <= 0) continue;
-      const link = article.querySelector('a[href^="/p/"],a[href*="instagram.com/p/"]');
+      const prior = previousBounds.get(article);
+      previousBounds.set(article, {top:bounds.top, bottom:bounds.bottom});
+      const crossed = prior && ((prior.top >= innerHeight && bounds.bottom <= 80)
+        || (prior.bottom <= 80 && bounds.top >= innerHeight));
+      if (bounds.width <= 0 || bounds.height <= 0) continue;
+      if (!crossed && (bounds.bottom + currentY <= low || bounds.top + currentY >= high)) continue;
+      const link = article.querySelector('a[href^="/p/"],a[href*="instagram.com/p/"],a[href^="/reel/"]');
       if (link) {
         try {
-          const match = new URL(link.href, location.href).pathname.match(/^\/p\/([^/]+)/);
-          if (match) seen.add(match[1]);
+          const match = new URL(link.href, location.href).pathname.match(/^\/(?:p|reel)\/([A-Za-z0-9_-]{1,80})(?:\/|$)/);
+          if (match && seen.size < limit) seen.add(match[1]);
         } catch (_) { }
       }
     }
+    updateCap();
   }
   function queueScan() { if (!scheduled) { scheduled = true; requestAnimationFrame(scan); } }
-  new MutationObserver(queueScan).observe(document.documentElement, {subtree:true, childList:true, attributes:true, attributeFilter:['href']});
-  addEventListener('scroll', queueScan, {passive:true});
+  new MutationObserver(queueScan).observe(document.documentElement, {subtree:true, childList:true, attributes:true, characterData:true, attributeFilter:['href','aria-label']});
+  // Read geometry on the scroll event: a deferred frame can lose a fast swipe.
+  addEventListener('scroll', scan, {passive:true, capture:true});
   addEventListener('popstate', queueScan);
   document.addEventListener('click', e => {
     const a = e.target.closest && e.target.closest('a[href]');
@@ -60,6 +83,11 @@
   }, true);
   window.__ataraxiaStillness = {
     scan,
+    configure: config => {
+      limit = Math.max(1, Math.min(500, Number(config.limit) || 10));
+      for (const id of (config.ids || [])) if (/^[A-Za-z0-9_-]{1,80}$/.test(id)) seen.add(id);
+      scan();
+    },
     snapshot: () => ({ ids: isFeed() ? Array.from(seen).slice(0,500) : [], hiddenAds, feed:isFeed() })
   };
   scan();

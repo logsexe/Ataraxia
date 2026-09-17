@@ -121,7 +121,9 @@ public class MainActivity extends Activity {
             @Override public void onPageFinished(WebView view,String url) {
                 if (!browsing || !Policy.internal(url) || Policy.blocked(url)) return;
                 final int page = generation;
-                web.evaluateJavascript(script, value -> {
+                String configuredScript = script + "\nwindow.__ataraxiaStillness && window.__ataraxiaStillness.configure({limit:"
+                    + prefs.getInt("postLimit",10) + ",ids:" + new JSONArray(new ArrayList<>(seen)).toString() + "});";
+                web.evaluateJavascript(configuredScript, value -> {
                     if (browsing && page==generation) web.setVisibility(View.VISIBLE);
                 });
                 CookieManager.getInstance().flush();
