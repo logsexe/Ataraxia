@@ -6,15 +6,15 @@
 
 An Instagram web client designed to make checking in finite. Free, MIT-licensed source. No developer backend, ads, analytics, subscription, device-admin, Accessibility, overlay, VPN or usage-access permissions. Not affiliated with Instagram or Meta.
 
-## Install the supplied APK
+## Install the pilot
 
-1. On Android 11 or newer, open `dist/Ataraxia-0.1.0-pilot.apk` in your intended profile. For the four-profile GrapheneOS setup, use Google Sandbox.
+1. Build the pilot from source with Android Studio or download it from the repository's Releases page once the first signed release is published.
 2. Allow installation from the browser/files app only when needed, install, and turn that installation permission back off afterwards. If your Owner policy disables installation in secondary users, install via Owner and use its “Install available apps” control instead.
 3. Open Ataraxia, read the pilot notice, and choose **Open Instagram inbox**.
 4. Log in on Instagram's own webpage with your usual username/password and 2FA. Facebook sign-in/pop-ups are not supported. The app does not provide a separate credential form.
 5. Try the inbox, open Feed, then test the shortest limits from Settings. Verify the feed is stopped and inbox remains accessible.
 
-The supplied APK is a signed, non-debuggable pilot. It is not a production release or independently audited app. Keep the official app until the pilot passes your tests. The pilot signing key is not included in this source archive. Your own build may require uninstalling the supplied build before installation because Android requires matching signing keys for updates. Uninstalling clears the login and local counters, not your Instagram account.
+This is a pilot, not a production release or independently audited app. Keep the official app until the pilot passes your tests. Builds made with different signing keys cannot update one another without uninstalling first. Uninstalling clears the login and local counters, not your Instagram account.
 
 ## What it does
 
