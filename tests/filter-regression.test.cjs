@@ -11,7 +11,7 @@ function fixture(posts) {
   const label = {textContent:p.label||'', getBoundingClientRect:()=>({width:100,height:20}),
    closest:()=>p.header?{}:null, compareDocumentPosition:()=>p.before?4:2, contains:()=>false,
    getAttribute:k=>k==='aria-label'?(p.aria||''):null};
-  return {dataset:{}, querySelectorAll:()=>[label],
+  return {dataset:{}, querySelectorAll:q=>q==='img'?[]:[label],
    getBoundingClientRect:()=>({top:i*600-state.scrollY,bottom:(i+1)*600-state.scrollY,width:400,height:600}),
    querySelector:q=>q.startsWith('video')?media:{href:`https://www.instagram.com/p/Post${i}/`}};
  });
@@ -48,3 +48,10 @@ f=fixture(Array.from({length:20},()=>({})));
 f.state.__ataraxiaStillness.configure({limit:3,ids:['Older1','Older2']});
 assert.ok(f.attrs.has('data-quiet-capped'),'restored native counts contribute to cap');
 console.log('PASS: 12 regression assertions (mock DOM): fast jump, reverse scroll, immediate cap, inbox isolation, metadata labels, caption preservation, restored count');
+
+f=fixture([{label:'Ad',media:true,before:true},{label:'Ad',media:true,before:false}]);
+assert.equal(f.articles[0].dataset.quietHidden,'true');
+assert.equal(f.articles[1].dataset.quietHidden,undefined);
+for (const article of f.articles) article.querySelectorAll=()=>{throw Error('metadata rescanned during scroll');};
+f.scroll(100);
+console.log('PASS: Ad label, caption preservation and zero metadata scans on scroll');

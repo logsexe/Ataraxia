@@ -6,6 +6,7 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
 (async()=>{
  const browser=await chromium.launch({headless:true,executablePath:process.env.ATARAXIA_TEST_BROWSER || undefined,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:412,height:915}});
+ const errors=[]; page.on('pageerror',error=>errors.push(error.message));
  const html=`<html><head><style>article {height:250px;width:380px;}body{margin:0}</style></head><body>
  <nav><a id="reels" href="/reels/">Reels</a><a id="explore" href="/explore/">Explore</a><a id="inbox" href="/direct/inbox/">Inbox</a></nav>
  <article id="ad"><header><span>Sponsored</span></header><a href="/p/Ad1/">Ad</a></article>
@@ -57,10 +58,32 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  assert.equal(await page.locator('#modern').isVisible(),false);
  assert.equal(await page.locator('#split').isVisible(),false);
  assert.equal(await page.locator('#caption').isVisible(),true);
+ // Screenshot-style metadata: small avatar before the Ad label, no semantic header.
+ const screenshotHtml = `<article id="short-ad"><img alt="IG" width="40" height="40"><div><span>ig.australia</span><span>Ad</span></div><img alt="Trade shares" width="350" height="500"></article>
+ <article id="organic"><img width="350" height="500"><span>Ad</span><a href="/p/Organic/">Post</a></article>
+ <article id="late"><span id="late-label">Friend</span><img width="350" height="500"><a href="/p/Late/">Post</a></article>`;
+ await page.route('https://www.instagram.com/**',route=>route.fulfill({contentType:'text/html',body:screenshotHtml}));
+ await page.goto('https://www.instagram.com/'); await page.evaluate(script);
+ assert.equal(await page.locator('#short-ad').isVisible(),false);
+ assert.equal(await page.locator('#organic').isVisible(),true);
+ await page.evaluate(()=>document.querySelector('#late-label').textContent='Ad');
+ await page.waitForFunction(()=>document.querySelector('#late').dataset.quietHidden==='true');
+ await page.evaluate(()=>document.querySelector('#late-label').textContent='Friend again');
+ await page.waitForFunction(()=>document.querySelector('#late').dataset.quietHidden!=='true');
+ // Scroll hot path must never enumerate labels or all document links.
+ await page.evaluate(()=>{
+   const original=Element.prototype.querySelectorAll;
+   const originalDocument=document.querySelectorAll;
+   Element.prototype.querySelectorAll=function(){throw Error('Element subtree scanned on scroll');};
+   document.querySelectorAll=function(){throw Error('Document scanned on scroll');};
+   try { for(let i=0;i<100;i++) window.dispatchEvent(new Event('scroll')); }
+   finally {Element.prototype.querySelectorAll=original;document.querySelectorAll=originalDocument;}
+ });
  // Whole-script guard: never operate on look-alike domains.
  await page.route('https://instagram.com.evil.test/**',route=>route.fulfill({contentType:'text/html',body:html}));
  await page.goto('https://instagram.com.evil.test/'); await page.evaluate(script);
  assert.equal(await page.evaluate(()=>typeof window.__ataraxiaStillness),'undefined');
  console.log('PASS: browser fixtures — route hiding, dynamic content, ad filtering, caption preservation, unique counting, idempotence, inbox isolation, Afrikaans label, origin guard, fast scroll, immediate cap, split/accessible ad metadata');
+ assert.deepEqual(errors,[], 'no script errors, including the scroll hot path');
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
