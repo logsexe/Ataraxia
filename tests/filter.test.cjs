@@ -97,6 +97,24 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
    try { for(let i=0;i<100;i++) window.dispatchEvent(new Event('scroll')); }
    finally {Element.prototype.querySelectorAll=original;document.querySelectorAll=originalDocument;}
  });
+ // Focused/ Balanced mode UI routes, SPA navigation and preserved counts.
+ await page.goto('https://www.instagram.com/');await page.evaluate(script);
+ await page.evaluate(()=>{
+   const a=document.createElement('a');a.id='home-route';a.href='/';a.textContent='Home';document.body.append(a);
+   window.__ataraxiaStillness.configure({focused:true,limit:10,ids:['SavedPost']});
+ });
+ assert.equal(await page.locator('html').getAttribute('data-quiet-focused'),'');
+ assert.equal(await page.locator('#home-route').getAttribute('data-quiet-home-hidden'),'true');
+ await page.evaluate(()=>history.pushState({},'', '/direct/inbox/'));
+ assert.equal(await page.locator('html').getAttribute('data-quiet-focused'),null);
+ await page.evaluate(()=>history.pushState({},'', '/movinglogs/'));
+ assert.equal(await page.locator('html').getAttribute('data-quiet-focused'),null);
+ await page.evaluate(()=>history.pushState({},'', '/'));
+ assert.equal(await page.locator('html').getAttribute('data-quiet-focused'),'');
+ await page.evaluate(()=>window.__ataraxiaStillness.configure({focused:false}));
+ assert.equal(await page.locator('html').getAttribute('data-quiet-focused'),null);
+ assert.equal(await page.locator('#home-route').getAttribute('data-quiet-home-hidden'),null);
+ assert.ok((await page.evaluate(()=>window.__ataraxiaStillness.snapshot())).ids.includes('SavedPost'));
  // Whole-script guard: never operate on look-alike domains.
  await page.route('https://instagram.com.evil.test/**',route=>route.fulfill({contentType:'text/html',body:html}));
  await page.goto('https://instagram.com.evil.test/'); await page.evaluate(script);

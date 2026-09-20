@@ -9,17 +9,21 @@
   let previousY = null;
   let previousBounds = new WeakMap();
   let limit = 500;
+  let focused = false;
   let articles = [];
   const dirty = new Set();
   const checked = new WeakSet();
   const scrollers = new WeakMap();
   const normalise = text => (text || '').replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const updateCap = () => document.documentElement.toggleAttribute('data-quiet-capped', isFeed() && seen.size >= limit);
+  const updateCap = () => {
+    document.documentElement.toggleAttribute('data-quiet-capped', isFeed() && seen.size >= limit);
+    document.documentElement.toggleAttribute('data-quiet-focused', focused && isFeed());
+  };
   const blockedPath = p => /^\/(reels?|explore|tv)(\/|$)/i.test(p.replace(/\/+/g, '/'));
   const isFeed = () => location.pathname === '/';
   const labels = new Set(['ad', 'advertisement', 'sponsored', 'geborg', 'geborgde', 'suggested for you', 'voorgestel vir jou']);
   const style = document.createElement('style');
-  style.textContent = '[data-quiet-hidden="true"]{display:none!important}html{scroll-behavior:auto!important}html[data-quiet-capped] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-capped]::after{content:"Session post limit reached. Use Inbox below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}';
+  style.textContent = '[data-quiet-hidden="true"]{display:none!important}[data-quiet-home-hidden="true"]{display:none!important}html[data-quiet-focused] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-focused]::after{content:"Focused mode. Open Inbox or Home below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}html{scroll-behavior:auto!important}html[data-quiet-capped] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-capped]::after{content:"Session post limit reached. Use Inbox below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}';
   (document.head || document.documentElement).appendChild(style);
   const hide = el => { if (el.dataset.quietHidden !== 'true') el.dataset.quietHidden = 'true'; };
   function scan() {
@@ -27,7 +31,11 @@
     for (const a of document.querySelectorAll('a[href]')) {
       try {
         const u = new URL(a.getAttribute('href'), location.href);
-        if (/(^|\.)instagram\.com$/i.test(u.hostname) && blockedPath(u.pathname)) hide(a);
+        if (/(^|\.)instagram\.com$/i.test(u.hostname)) {
+          if (blockedPath(u.pathname)) hide(a);
+          if (focused && u.pathname === '/') a.dataset.quietHomeHidden = 'true';
+          else delete a.dataset.quietHomeHidden;
+        }
       } catch (_) { }
     }
     // Never inspect message bodies: sponsored/suggestion filtering is restricted to the home feed.
@@ -71,6 +79,7 @@
   }
   function countPosts() {
     if (!isFeed()) { previousY = null; previousBounds = new WeakMap(); updateCap(); return; }
+    if (focused) { updateCap(); return; }
     const currentY = window.scrollY;
     const low = Math.min(previousY === null ? currentY : previousY, currentY) + 80;
     const high = Math.max(previousY === null ? currentY : previousY, currentY) + innerHeight;
@@ -114,13 +123,19 @@
   }).observe(document.documentElement, {subtree:true, childList:true, attributes:true, characterData:true, attributeFilter:['href','aria-label','src','alt']});
   // Read geometry on the scroll event: a deferred frame can lose a fast swipe.
   addEventListener('scroll', countPosts, {passive:true, capture:true});
-  addEventListener('popstate', queueScan);
+  addEventListener('popstate', () => { updateCap(); queueScan(); });
+  for (const method of ['pushState','replaceState']) {
+    if (typeof history !== 'undefined') {
+      const original = history[method];
+      history[method] = function(...args) { const result=original.apply(this,args); updateCap(); queueScan(); return result; };
+    }
+  }
   document.addEventListener('click', e => {
     const a = e.target.closest && e.target.closest('a[href]');
     if (!a) return;
     try {
       const u = new URL(a.href, location.href);
-      if (/(^|\.)instagram\.com$/i.test(u.hostname) && blockedPath(u.pathname)) {
+      if (/(^|\.)instagram\.com$/i.test(u.hostname) && (blockedPath(u.pathname) || (focused && u.pathname === '/'))) {
         e.preventDefault(); e.stopImmediatePropagation();
       }
     } catch (_) { }
@@ -128,6 +143,7 @@
   window.__ataraxiaStillness = {
     scan: () => { for (const article of articles) dirty.add(article); scan(); },
     configure: config => {
+      if (typeof config.focused === 'boolean') focused = config.focused;
       if (config.reset === true) { seen.clear(); previousY = null; previousBounds = new WeakMap(); }
       limit = Math.max(1, Math.min(500, Number(config.limit) || 10));
       for (const id of (config.ids || [])) if (/^[A-Za-z0-9_-]{1,80}$/.test(id)) seen.add(id);

@@ -21,6 +21,9 @@ public final class Policy {
         String p = path(raw);
         return p.matches("^/(reel|reels|explore|tv)(/.*)?$");
     }
+    public static boolean blocked(String raw, boolean focused) {
+        return blocked(raw) || (focused && feed(raw));
+    }
     public static boolean exempt(String raw) {
         String p = path(raw);
         return p.matches("^/(direct|accounts|challenge|checkpoint|two_factor)(/.*)?$");

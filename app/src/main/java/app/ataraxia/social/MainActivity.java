@@ -42,7 +42,7 @@ public class MainActivity extends Activity {
             lastTick = now;
             String url = web.getUrl();
             if (browsing && Policy.internal(url)) {
-                if (Policy.blocked(url)) { rejectRoute(); }
+                if (Policy.blocked(url,focused())) { rejectRoute(); }
                 else if (!Policy.exempt(url)) {
                     prefs.edit().putLong("dailyMs", prefs.getLong("dailyMs",0) + delta)
                         .putLong("sessionMs", prefs.getLong("sessionMs",0) + delta).apply();
@@ -89,7 +89,7 @@ public class MainActivity extends Activity {
         panel.setTag(scroll);
         LinearLayout nav = new LinearLayout(this);
         addNav(nav,"Home",()->showHome()); addNav(nav,"Inbox",()->navigate(BASE+"/direct/inbox/"));
-        addNav(nav,"Feed",()->openFeed()); addNav(nav,"Settings",()->settings()); root.addView(nav);
+        addNav(nav,"Browse",()->{if(focused())visitProfile();else openFeed();}); addNav(nav,"Settings",()->settings()); root.addView(nav);
         setContentView(root);
         configureWeb();
         showHome();
@@ -116,14 +116,14 @@ public class MainActivity extends Activity {
             @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon) {
                 generation++; waitingSnapshot=false;
                 if (!Policy.internal(url)) { web.stopLoading(); showHome(); return; }
-                if (Policy.blocked(url)) { rejectRoute(); return; }
+                if (Policy.blocked(url,focused())) { rejectRoute(); return; }
                 if (!Policy.exempt(url) && limited()) { web.stopLoading(); showLimit(); return; }
                 if (browsing) web.setVisibility(View.INVISIBLE);
             }
             @Override public void onPageFinished(WebView view,String url) {
-                if (!browsing || !Policy.internal(url) || Policy.blocked(url)) return;
+                if (!browsing || !Policy.internal(url) || Policy.blocked(url,focused())) return;
                 final int page = generation;
-                String configuredScript = script + "\nwindow.__ataraxiaStillness && window.__ataraxiaStillness.configure({limit:"
+                String configuredScript = script + "\nwindow.__ataraxiaStillness && window.__ataraxiaStillness.configure({focused:" + focused() + ",limit:"
                     + prefs.getInt("postLimit",10) + ",ids:" + new JSONArray(new ArrayList<>(seen)).toString() + "});";
                 web.evaluateJavascript(configuredScript, value -> {
                     if (browsing && page==generation) web.setVisibility(View.VISIBLE);
@@ -182,7 +182,7 @@ public class MainActivity extends Activity {
     }
     private boolean allowNavigation(String url) {
         if (Policy.internal(url)) {
-            if (Policy.blocked(url)) { rejectRoute(); return false; }
+            if (Policy.blocked(url,focused())) { rejectRoute(); return false; }
             if (!Policy.exempt(url) && limited()) { showLimit(); return false; }
             return true;
         }
@@ -203,10 +203,11 @@ public class MainActivity extends Activity {
         browsing=true; ((View)panel.getTag()).setVisibility(View.GONE);
         web.setVisibility(View.VISIBLE); web.onResume(); lastTick=SystemClock.elapsedRealtime(); web.loadUrl(url);
     }
+    private boolean focused() { return prefs.getBoolean("focused",true); }
     private void rejectRoute() {
-        web.stopLoading(); showHome(); Toast.makeText(this,"Reels and Explore are switched off.",Toast.LENGTH_SHORT).show();
+        web.stopLoading(); showHome(); Toast.makeText(this,focused()?"Focused mode: home feed, Reels and Explore are off.":"Reels and Explore are switched off.",Toast.LENGTH_SHORT).show();
     }
-    private void openFeed() { refreshSession(); if(limited()) showLimit(); else navigate(BASE+"/"); }
+    private void openFeed() { if(focused()){rejectRoute();return;} refreshSession(); if(limited()) showLimit(); else navigate(BASE+"/"); }
     private void pollPosts() {
         waitingSnapshot=true; final int page=generation, session=sessionGeneration;
         web.evaluateJavascript("JSON.stringify(window.__ataraxiaStillness ? window.__ataraxiaStillness.snapshot() : null)",raw->{
@@ -262,10 +263,12 @@ public class MainActivity extends Activity {
     private void showHome() {
         basePanel();
         panel.addView(text("Your attention.\nYour choice.",34,INK));
-        panel.addView(text("Check in with people. Leave the endless feed behind.",17,MUTED));
+        panel.addView(text(focused()?"Focused · Messages and deliberate profile visits.":"Balanced · Messages and a short, capped feed.",17,MUTED));
         space(); card("INBOX FIRST","Messages remain available after your browsing limit. No background message notifications in this pilot.");
         button(panel,"Open Instagram inbox",()->navigate(BASE+"/direct/inbox/"));
-        button(panel,"Browse a little",()->openFeed());
+        if (!focused()) button(panel,"Browse a little",()->openFeed());
+        button(panel,"Visit a profile",()->visitProfile());
+        button(panel,"Change mode",()->chooseMode());
         space(); card("YOUR BOUNDARIES",prefs.getInt("postLimit",10)+" posts per session\n"+prefs.getInt("sessionMinutes",5)+" minutes per session\n"+prefs.getInt("dailyMinutes",15)+" minutes browsing per day\n10-minute break between capped sessions");
         panel.addView(text("Reels + Explore blocked · Sponsored posts filtered where detected\n\nInstagram still processes your account activity. Filtering can miss ads and recommendations. Limits apply only here.",13,MUTED));
     }
@@ -278,13 +281,14 @@ public class MainActivity extends Activity {
     }
     private void showError(String message) { basePanel(); panel.addView(text("Connection paused",28,INK)); panel.addView(text(message,17,MUTED)); button(panel,"Try inbox again",()->navigate(BASE+"/direct/inbox/")); }
     private void settings() {
-        new AlertDialog.Builder(this).setTitle("Your boundaries").setItems(new String[]{"Posts per session","Minutes per session","Daily browsing minutes","Privacy and limitations","Clear Instagram login","Refresh current page","Filter status"},(d,which)->{
+        new AlertDialog.Builder(this).setTitle("Your boundaries").setItems(new String[]{"Posts per session","Minutes per session","Daily browsing minutes","Privacy and limitations","Clear Instagram login","Refresh current page","Filter status","Focused / Balanced mode"},(d,which)->{
             if(which==0) choose("postLimit","Posts per session",new int[]{5,10,15,20});
             if(which==1) choose("sessionMinutes","Minutes per session",new int[]{2,5,10});
             if(which==2) choose("dailyMinutes","Daily browsing minutes",new int[]{5,15,30,60});
             if(which==3) new AlertDialog.Builder(this).setTitle("Local controls, honest limits")
                 .setMessage("Only Internet permission. No analytics, admin, Accessibility, VPN or notification access.\n\nInstagram login cookies remain in this app's private WebView storage; Meta still receives activity. Android backup is disabled. Settings and counters stay on-device.\n\nSponsored-post detection currently targets English and Afrikaans labels in recognised feed markup. It can miss ads. Post counting can miss unsupported layouts; native time limits remain active.\n\nNo calls, background notifications, downloads or Facebook sign-in support. Use username/password and 2FA on Instagram's own page.\n\nLimits are voluntary: settings, clock changes, clearing app data or other apps can bypass them. This is not parental-control enforcement.")
                 .setPositiveButton("Done",null).show();
+            if(which==7) chooseMode();
             if(which==5) refreshPage();
             if(which==6) filterStatus();
             if(which==4) new AlertDialog.Builder(this).setTitle("Clear Instagram session?").setMessage("Removes this app's login cookies, website storage and cache. Your limits remain.")
@@ -294,6 +298,29 @@ public class MainActivity extends Activity {
                     WebStorage.getInstance().deleteAllData(); web.clearCache(true); web.clearHistory();
                 }).show();
         }).show();
+    }
+    private void chooseMode() {
+        new AlertDialog.Builder(this).setTitle("Choose your mode")
+            .setSingleChoiceItems(new String[]{"Focused — inbox and profiles", "Balanced — add a capped feed"},focused()?0:1,(d,n)->{
+                prefs.edit().putBoolean("focused",n==0).apply();
+                // Mode changes never reset time, post counts or the cooldown.
+                web.stopLoading(); d.dismiss(); showHome();
+            }).setNegativeButton("Cancel",null).show();
+    }
+    private void visitProfile() {
+        EditText input=new EditText(this); input.setSingleLine(true); input.setHint("Instagram username");
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Visit a profile").setView(input)
+            .setNegativeButton("Cancel",null).setPositiveButton("Open",null).create();
+        dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            String name=input.getText().toString().trim().replaceFirst("^@", "");
+            if (!name.matches("[A-Za-z0-9_][A-Za-z0-9_.]{0,29}") || name.contains("..") || name.endsWith(".")
+                || Arrays.asList("direct","accounts","challenge","checkpoint","two_factor","p","reel","reels","explore","tv","stories").contains(name.toLowerCase(Locale.ROOT))) {
+                input.setError("Enter a profile username, not a link or Instagram section."); return;
+            }
+            dialog.dismiss(); navigate(BASE+"/"+name+"/");
+        }));
+        dialog.show();
     }
     private void refreshPage() {
         String url=web.getUrl();
@@ -346,7 +373,7 @@ public class MainActivity extends Activity {
         if (web.canGoBack()) {
             WebBackForwardList history=web.copyBackForwardList();
             WebHistoryItem previous=history.getItemAtIndex(history.getCurrentIndex()-1);
-            if (previous!=null && Policy.internal(previous.getUrl()) && !Policy.blocked(previous.getUrl())) {
+            if (previous!=null && Policy.internal(previous.getUrl()) && !Policy.blocked(previous.getUrl(),focused())) {
                 if (!Policy.exempt(previous.getUrl()) && limited()) showLimit();
                 else web.goBack();
                 return;

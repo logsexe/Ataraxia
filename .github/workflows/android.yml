@@ -23,6 +23,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Privacy regression checks and review inventory
+        run: python3 tools/privacy_check.py
       - name: Test policy and session limits
         run: |
           mkdir -p build/tests
@@ -44,25 +46,26 @@ jobs:
       - name: Verify APK signature, identity and permissions
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Ataraxia-0.1.3-preview.apk
+          cp build/privacy-review.json dist/privacy-review.json
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Ataraxia-0.1.4-preview.apk
           sdk_tools="$ANDROID_HOME/build-tools/35.0.0"
-          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Ataraxia-0.1.3-preview.apk > dist/SIGNATURE.txt
-          "$sdk_tools/zipalign" -c -p 4 dist/Ataraxia-0.1.3-preview.apk
-          "$sdk_tools/aapt" dump badging dist/Ataraxia-0.1.3-preview.apk > dist/manifest.txt
+          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Ataraxia-0.1.4-preview.apk > dist/SIGNATURE.txt
+          "$sdk_tools/zipalign" -c -p 4 dist/Ataraxia-0.1.4-preview.apk
+          "$sdk_tools/aapt" dump badging dist/Ataraxia-0.1.4-preview.apk > dist/manifest.txt
           python3 - <<'PY'
           from pathlib import Path
           text = Path('dist/manifest.txt').read_text()
-          assert "package: name='app.ataraxia.social' versionCode='4' versionName='0.1.3-preview'" in text
+          assert "package: name='app.ataraxia.social' versionCode='5' versionName='0.1.4-preview'" in text
           permissions = [line for line in text.splitlines() if line.startswith('uses-permission:')]
           assert permissions == ["uses-permission: name='android.permission.INTERNET'"], permissions
           assert 'application-debuggable' not in text
           print('Verified identity, version, Internet-only permissions and non-debuggable manifest')
           PY
           cd dist
-          sha256sum Ataraxia-0.1.3-preview.apk > SHA256SUMS.txt
+          sha256sum Ataraxia-0.1.4-preview.apk > SHA256SUMS.txt
       - name: Upload verified pilot APK
         uses: actions/upload-artifact@v4
         with:
-          name: Ataraxia-0.1.3-preview
+          name: Ataraxia-0.1.4-preview
           path: dist/*
           if-no-files-found: error
