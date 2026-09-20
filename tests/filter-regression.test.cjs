@@ -55,3 +55,14 @@ assert.equal(f.articles[1].dataset.quietHidden,undefined);
 for (const article of f.articles) article.querySelectorAll=()=>{throw Error('metadata rescanned during scroll');};
 f.scroll(100);
 console.log('PASS: Ad label, caption preservation and zero metadata scans on scroll');
+
+f=fixture(Array.from({length:20},()=>({})));
+f.state.__ataraxiaStillness.configure({limit:3,ids:['Previous1','Previous2']});
+assert.ok(f.attrs.has('data-quiet-capped'));
+f.state.location.pathname='/direct/inbox/';
+f.state.__ataraxiaStillness.configure({reset:true,limit:3,ids:[]});
+assert.ok(!f.attrs.has('data-quiet-capped'));
+f.state.location.pathname='/';f.state.__ataraxiaStillness.scan();
+assert.deepEqual(Array.from(f.state.__ataraxiaStillness.snapshot().ids),['Post0']);
+assert.equal(f.state.__ataraxiaStillness.snapshot().containers,20);
+console.log('PASS: session reset while in inbox, return to feed and container status');

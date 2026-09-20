@@ -58,8 +58,26 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  assert.equal(await page.locator('#modern').isVisible(),false);
  assert.equal(await page.locator('#split').isVisible(),false);
  assert.equal(await page.locator('#caption').isVisible(),true);
+ // A new native session can reset the cap without a full page reload.
+ await page.evaluate(()=>window.__ataraxiaStillness.configure({limit:1,ids:['PriorSession']}));
+ assert.equal(await page.locator('html').getAttribute('data-quiet-capped'),'');
+ await page.evaluate(()=>{
+   history.pushState({},'', '/direct/inbox/');
+   window.__ataraxiaStillness.configure({reset:true,limit:10,ids:[]});
+ });
+ assert.equal(await page.locator('html').getAttribute('data-quiet-capped'),null);
+ await page.evaluate(()=>{history.pushState({},'', '/');window.__ataraxiaStillness.scan();});
+ assert.equal((await page.evaluate(()=>window.__ataraxiaStillness.snapshot())).ids.includes('PriorSession'),false);
+ // Nested scrolling must count posts completely crossed in one jump.
+ const nestedHtml='<style>body{margin:0}#feed{height:500px;overflow:auto}article{height:600px;width:380px}</style><div id="feed">'+
+   Array.from({length:20},(_,i)=>`<article><header>Friend</header><a href="/p/Nested${i}/">Post</a></article>`).join('')+'</div>';
+ await page.route('https://www.instagram.com/**',route=>route.fulfill({contentType:'text/html',body:nestedHtml}));
+ await page.goto('https://www.instagram.com/');await page.evaluate(script);
+ assert.deepEqual((await page.evaluate(()=>window.__ataraxiaStillness.snapshot())).ids,['Nested0']);
+ await page.evaluate(()=>{const feed=document.querySelector('#feed');feed.scrollTop=6000;feed.dispatchEvent(new Event('scroll'));});
+ assert.deepEqual((await page.evaluate(()=>window.__ataraxiaStillness.snapshot())).ids,Array.from({length:11},(_,i)=>'Nested'+i));
  // Screenshot-style metadata: small avatar before the Ad label, no semantic header.
- const screenshotHtml = `<article id="short-ad"><img alt="IG" width="40" height="40"><div><span>ig.australia</span><span>Ad</span></div><img alt="Trade shares" width="350" height="500"></article>
+ const screenshotHtml = `<article id="short-ad"><img alt="IG" style="width:40px;height:40px"><div><span>ig.australia</span><div>Ad</div></div><img alt="Trade shares" width="350" height="500"></article>
  <article id="organic"><img width="350" height="500"><span>Ad</span><a href="/p/Organic/">Post</a></article>
  <article id="late"><span id="late-label">Friend</span><img width="350" height="500"><a href="/p/Late/">Post</a></article>`;
  await page.route('https://www.instagram.com/**',route=>route.fulfill({contentType:'text/html',body:screenshotHtml}));

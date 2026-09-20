@@ -31,11 +31,12 @@ public class MainActivity extends Activity {
     private String script;
     private ValueCallback<Uri[]> fileCallback;
     private final Set<String> seen = new HashSet<>();
-    private int generation;
+    private int generation, sessionGeneration;
     private final Runnable ticker = new Runnable() {
         public void run() {
             if (!active) return;
             rollDay();
+            refreshSession();
             long now = SystemClock.elapsedRealtime();
             long delta = Math.min(5000, Math.max(0, now - lastTick));
             lastTick = now;
@@ -49,7 +50,8 @@ public class MainActivity extends Activity {
                 }
                 if (browsing && !waitingSnapshot && Policy.feed(url)) pollPosts();
             }
-            status.setText(summary());
+            String nextSummary = summary();
+            if (!nextSummary.contentEquals(status.getText())) status.setText(nextSummary);
             handler.postDelayed(this, 1000);
         }
     };
@@ -206,10 +208,10 @@ public class MainActivity extends Activity {
     }
     private void openFeed() { refreshSession(); if(limited()) showLimit(); else navigate(BASE+"/"); }
     private void pollPosts() {
-        waitingSnapshot=true; final int page=generation;
+        waitingSnapshot=true; final int page=generation, session=sessionGeneration;
         web.evaluateJavascript("JSON.stringify(window.__ataraxiaStillness ? window.__ataraxiaStillness.snapshot() : null)",raw->{
             waitingSnapshot=false;
-            if(!browsing || page!=generation || !Policy.internal(web.getUrl()) || !Policy.feed(web.getUrl())) return;
+            if(!browsing || page!=generation || session!=sessionGeneration || !Policy.internal(web.getUrl()) || !Policy.feed(web.getUrl())) return;
             try {
                 Object parsed=new JSONTokener(raw).nextValue();
                 if(!(parsed instanceof String)) return;
@@ -217,7 +219,8 @@ public class MainActivity extends Activity {
                 if(ids!=null) for(int i=0;i<Math.min(ids.length(),500);i++) {
                     String id=ids.optString(i); if(id.matches("[A-Za-z0-9_-]{1,80}")) seen.add(id);
                 }
-                prefs.edit().putStringSet("seen",new HashSet<>(seen)).apply();
+                if (!seen.equals(prefs.getStringSet("seen",Collections.emptySet())))
+                    prefs.edit().putStringSet("seen",new HashSet<>(seen)).apply();
                 if(limited()) showLimit();
             } catch(Exception ignored) { /* Unrecognised markup: native time cap still applies. */ }
         });
@@ -231,8 +234,12 @@ public class MainActivity extends Activity {
     private void refreshSession() {
         long until=prefs.getLong("cooldown",0);
         if(until>0 && System.currentTimeMillis()>=until) {
+            sessionGeneration++;
             prefs.edit().putLong("sessionMs",0).putLong("cooldown",0).remove("seen").apply(); seen.clear();
-            // A fresh document is loaded on the next navigation, clearing its per-page seen set too.
+            // Also reset a live SPA document: returning from Inbox may not reload it.
+            if (web != null && Policy.internal(web.getUrl())) web.evaluateJavascript(
+                "window.__ataraxiaStillness && window.__ataraxiaStillness.configure({reset:true,limit:"
+                    + prefs.getInt("postLimit",10) + ",ids:[]});",null);
         }
     }
     private boolean limited() {
@@ -242,6 +249,9 @@ public class MainActivity extends Activity {
     }
     private String summary() {
         long remaining=Math.max(0,prefs.getInt("dailyMinutes",15)*60000L-prefs.getLong("dailyMs",0));
+        long breakSeconds = Math.max(0,(prefs.getLong("cooldown",0)-System.currentTimeMillis()+999)/1000);
+        if (remaining == 0) return "Daily allowance reached · Inbox available";
+        if (breakSeconds > 0) return "Break: " + (breakSeconds/60) + "m " + (breakSeconds%60) + "s · Inbox available";
         return (remaining/60000)+"m "+((remaining/1000)%60)+"s left today  ·  "+seen.size()+" / "+prefs.getInt("postLimit",10)+" posts";
     }
     private void basePanel() {
@@ -268,13 +278,15 @@ public class MainActivity extends Activity {
     }
     private void showError(String message) { basePanel(); panel.addView(text("Connection paused",28,INK)); panel.addView(text(message,17,MUTED)); button(panel,"Try inbox again",()->navigate(BASE+"/direct/inbox/")); }
     private void settings() {
-        new AlertDialog.Builder(this).setTitle("Your boundaries").setItems(new String[]{"Posts per session","Minutes per session","Daily browsing minutes","Privacy and limitations","Clear Instagram login"},(d,which)->{
+        new AlertDialog.Builder(this).setTitle("Your boundaries").setItems(new String[]{"Posts per session","Minutes per session","Daily browsing minutes","Privacy and limitations","Clear Instagram login","Refresh current page","Filter status"},(d,which)->{
             if(which==0) choose("postLimit","Posts per session",new int[]{5,10,15,20});
             if(which==1) choose("sessionMinutes","Minutes per session",new int[]{2,5,10});
             if(which==2) choose("dailyMinutes","Daily browsing minutes",new int[]{5,15,30,60});
             if(which==3) new AlertDialog.Builder(this).setTitle("Local controls, honest limits")
                 .setMessage("Only Internet permission. No analytics, admin, Accessibility, VPN or notification access.\n\nInstagram login cookies remain in this app's private WebView storage; Meta still receives activity. Android backup is disabled. Settings and counters stay on-device.\n\nSponsored-post detection currently targets English and Afrikaans labels in recognised feed markup. It can miss ads. Post counting can miss unsupported layouts; native time limits remain active.\n\nNo calls, background notifications, downloads or Facebook sign-in support. Use username/password and 2FA on Instagram's own page.\n\nLimits are voluntary: settings, clock changes, clearing app data or other apps can bypass them. This is not parental-control enforcement.")
                 .setPositiveButton("Done",null).show();
+            if(which==5) refreshPage();
+            if(which==6) filterStatus();
             if(which==4) new AlertDialog.Builder(this).setTitle("Clear Instagram session?").setMessage("Removes this app's login cookies, website storage and cache. Your limits remain.")
                 .setNegativeButton("Cancel",null).setPositiveButton("Clear",(a,b)->{
                     web.stopLoading(); showHome(); web.loadUrl("about:blank");
@@ -282,6 +294,39 @@ public class MainActivity extends Activity {
                     WebStorage.getInstance().deleteAllData(); web.clearCache(true); web.clearHistory();
                 }).show();
         }).show();
+    }
+    private void refreshPage() {
+        String url=web.getUrl();
+        if (!browsing || !Policy.internal(url)) {
+            Toast.makeText(this,"Open Feed or Inbox first.",Toast.LENGTH_SHORT).show(); return;
+        }
+        rollDay(); refreshSession();
+        if (allowNavigation(url)) web.reload();
+    }
+    private void filterStatus() {
+        if (!browsing || !Policy.internal(web.getUrl())) {
+            new AlertDialog.Builder(this).setTitle("Filter status").setMessage("Open Feed or Inbox to check the current page.")
+                .setPositiveButton("Done",null).show(); return;
+        }
+        final int page=generation;
+        web.evaluateJavascript("JSON.stringify(window.__ataraxiaStillness ? window.__ataraxiaStillness.snapshot() : null)",raw->{
+            if (isFinishing() || page!=generation || !browsing) return;
+            String message="Filter not ready. Try refreshing the page. Native time limits remain active.";
+            try {
+                Object parsed=new JSONTokener(raw).nextValue();
+                if (parsed instanceof String) {
+                    JSONObject state=new JSONObject((String)parsed);
+                    if (!state.optBoolean("feed")) message="Feed filtering is inactive on this page. Messages are not inspected.";
+                    else message="Filter loaded\nPosts or suggestions hidden on this page: "+state.optInt("hiddenAds")
+                        +"\nPost containers detected: "+state.optInt("containers")
+                        +"\n\n"+(state.optInt("containers")==0
+                            ? "Post counting is unavailable in this layout. Native time limits remain active."
+                            : "Post counting requires supported links within these containers. Ad filtering is best effort.");
+                }
+            } catch(Exception ignored) { }
+            new AlertDialog.Builder(this).setTitle("Filter status").setMessage(message)
+                .setPositiveButton("Done",null).show();
+        });
     }
     private void choose(String key,String title,int[] values) {
         String[] labels=Arrays.stream(values).mapToObj(String::valueOf).toArray(String[]::new);
@@ -295,6 +340,19 @@ public class MainActivity extends Activity {
     private void addNav(LinearLayout nav,String label,Runnable action){Button b=new Button(this);b.setText(label);b.setTextSize(12);b.setAllCaps(false);b.setPadding(0,0,0,0);b.setTextColor(INK);b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(CARD));b.setOnClickListener(v->action.run());nav.addView(b,new LinearLayout.LayoutParams(0,dp(52),1));}
     @Override protected void onResume(){super.onResume();active=true;lastTick=SystemClock.elapsedRealtime();if(web!=null && browsing)web.onResume();handler.post(ticker);}
     @Override protected void onPause(){active=false;handler.removeCallbacks(ticker);if(web!=null)web.onPause();super.onPause();}
-    @Override public void onBackPressed(){if(browsing)showHome();else super.onBackPressed();}
+    @Override public void onBackPressed(){
+        if (!browsing) { super.onBackPressed(); return; }
+        rollDay(); refreshSession();
+        if (web.canGoBack()) {
+            WebBackForwardList history=web.copyBackForwardList();
+            WebHistoryItem previous=history.getItemAtIndex(history.getCurrentIndex()-1);
+            if (previous!=null && Policy.internal(previous.getUrl()) && !Policy.blocked(previous.getUrl())) {
+                if (!Policy.exempt(previous.getUrl()) && limited()) showLimit();
+                else web.goBack();
+                return;
+            }
+        }
+        showHome();
+    }
     @Override protected void onDestroy(){handler.removeCallbacks(ticker);if(fileCallback!=null)fileCallback.onReceiveValue(null);if(web!=null){content.removeView(web);web.destroy();}super.onDestroy();}
 }

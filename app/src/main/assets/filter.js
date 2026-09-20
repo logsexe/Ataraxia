@@ -12,6 +12,7 @@
   let articles = [];
   const dirty = new Set();
   const checked = new WeakSet();
+  const scrollers = new WeakMap();
   const normalise = text => (text || '').replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
   const updateCap = () => document.documentElement.toggleAttribute('data-quiet-capped', isFeed() && seen.size >= limit);
   const blockedPath = p => /^\/(reels?|explore|tv)(\/|$)/i.test(p.replace(/\/+/g, '/'));
@@ -35,6 +36,13 @@
     for (const article of articles) {
       if (!dirty.has(article) && checked.has(article)) continue;
       checked.add(article);
+      let scroller = null;
+      if (typeof window.getComputedStyle === 'function') {
+        for (let parent = article.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+          if (/^(auto|scroll|overlay)$/.test(getComputedStyle(parent).overflowY)) { scroller = parent; break; }
+        }
+      }
+      scrollers.set(article,scroller);
       // Instagram can reuse a post container for different content.
       const wasHidden = article.dataset.quietHidden === 'true';
       if (wasHidden) delete article.dataset.quietHidden;
@@ -42,8 +50,9 @@
       // Match metadata before the main media, never arbitrary caption text.
       const media = article.querySelector('video') || Array.from(article.querySelectorAll('img')).find(img =>
         !/profile|avatar/i.test(img.alt || '') && !img.closest('header') &&
-        !(Number(img.getAttribute('width')) > 0 && Number(img.getAttribute('width')) <= 100));
-      for (const el of article.querySelectorAll('header, header span, header a, span, [aria-label], a[href*="/ads/"]')) {
+        !((Number(img.getAttribute('width')) || img.getBoundingClientRect().width) > 0 &&
+          (Number(img.getAttribute('width')) || img.getBoundingClientRect().width) <= 100));
+      for (const el of article.querySelectorAll('header, header span, header a, span, div, [aria-label], a[href*="/ads/"]')) {
         const header = el.closest('header');
         const beforeMedia = media && Boolean(el.compareDocumentPosition(media) & Node.DOCUMENT_POSITION_FOLLOWING)
           && !el.contains(media);
@@ -66,15 +75,24 @@
     const low = Math.min(previousY === null ? currentY : previousY, currentY) + 80;
     const high = Math.max(previousY === null ? currentY : previousY, currentY) + innerHeight;
     previousY = currentY;
+    const clips = new Map();
     for (const article of articles) {
       if (article.dataset.quietHidden === 'true') continue;
       const bounds = article.getBoundingClientRect();
+      const scroller = scrollers.get(article);
+      if (scroller && !clips.has(scroller)) clips.set(scroller,scroller.getBoundingClientRect());
+      const clip = scroller ? clips.get(scroller) : null;
+      const viewTop = clip ? Math.max(0,clip.top) : 80;
+      const viewBottom = clip ? Math.min(innerHeight,clip.bottom) : innerHeight;
       const prior = previousBounds.get(article);
       previousBounds.set(article, {top:bounds.top, bottom:bounds.bottom});
-      const crossed = prior && ((prior.top >= innerHeight && bounds.bottom <= 80)
-        || (prior.bottom <= 80 && bounds.top >= innerHeight));
+      const crossed = prior && ((prior.top >= viewBottom && bounds.bottom <= viewTop)
+        || (prior.bottom <= viewTop && bounds.top >= viewBottom));
       if (bounds.width <= 0 || bounds.height <= 0) continue;
-      if (!crossed && (bounds.bottom + currentY <= low || bounds.top + currentY >= high)) continue;
+      if (viewBottom <= viewTop) continue;
+      if (!crossed && (clip
+        ? bounds.bottom <= viewTop || bounds.top >= viewBottom
+        : bounds.bottom + currentY <= low || bounds.top + currentY >= high)) continue;
       const link = article.querySelector('a[href^="/p/"],a[href*="instagram.com/p/"],a[href^="/reel/"]');
       if (link) {
         try {
@@ -110,11 +128,12 @@
   window.__ataraxiaStillness = {
     scan: () => { for (const article of articles) dirty.add(article); scan(); },
     configure: config => {
+      if (config.reset === true) { seen.clear(); previousY = null; previousBounds = new WeakMap(); }
       limit = Math.max(1, Math.min(500, Number(config.limit) || 10));
       for (const id of (config.ids || [])) if (/^[A-Za-z0-9_-]{1,80}$/.test(id)) seen.add(id);
       scan();
     },
-    snapshot: () => ({ ids: isFeed() ? Array.from(seen).slice(0,500) : [], hiddenAds, feed:isFeed() })
+    snapshot: () => ({ ids: isFeed() ? Array.from(seen).slice(0,500) : [], hiddenAds, feed:isFeed(), containers:isFeed() ? articles.length : 0 })
   };
   scan();
 })();
