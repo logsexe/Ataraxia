@@ -20,6 +20,11 @@ public class PolicyTest {
         check(!Policy.blocked("https://www.instagram.com/movinglogs/",true),"Focused allows profile");
         check(Policy.blocked("https://www.instagram.com/reels/",true),"Focused blocks reels");
         check(Policy.blocked("https://www.instagram.com/reels/",false),"Balanced blocks reels");
+        check("movinglogs".equals(Policy.profileName(" @MovingLogs ")),"normalise saved profile");
+        check("fuelled.by_logs".equals(Policy.profileName("fuelled.by_logs")),"valid punctuation");
+        for(String name:new String[]{"https://instagram.com/user/","../reels","reels","DIRECT","user?x=1","user/name","a..b","name.","", "a".repeat(31)})
+            check(Policy.profileName(name)==null,"reject invalid profile "+name);
+        check(Policy.profileName(null)==null,"null input");
         System.out.println("PASS: "+count+" navigation/security policy assertions");
     }
 }

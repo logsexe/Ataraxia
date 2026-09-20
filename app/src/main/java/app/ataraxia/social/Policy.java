@@ -36,5 +36,13 @@ public final class Policy {
             if (host.equals(domain) || host.endsWith("." + domain)) return true;
         return false;
     }
+    public static String profileName(String raw) {
+        if (raw == null) return null;
+        String name=raw.trim().replaceFirst("^@", "").toLowerCase(Locale.ROOT);
+        if (!name.matches("[a-z0-9_][a-z0-9_.]{0,29}") || name.contains("..") || name.endsWith(".")) return null;
+        for (String reserved : new String[]{"direct","accounts","challenge","checkpoint","two_factor","p","reel","reels","explore","tv","stories","about","developer","legal","privacy","web"})
+            if (reserved.equals(name)) return null;
+        return name;
+    }
     private Policy() { }
 }

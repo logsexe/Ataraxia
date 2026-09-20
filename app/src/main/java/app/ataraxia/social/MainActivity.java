@@ -268,6 +268,7 @@ public class MainActivity extends Activity {
         button(panel,"Open Instagram inbox",()->navigate(BASE+"/direct/inbox/"));
         if (!focused()) button(panel,"Browse a little",()->openFeed());
         button(panel,"Visit a profile",()->visitProfile());
+        button(panel,"Saved profiles ("+savedProfiles().size()+")",()->showSavedProfiles());
         button(panel,"Change mode",()->chooseMode());
         space(); card("YOUR BOUNDARIES",prefs.getInt("postLimit",10)+" posts per session\n"+prefs.getInt("sessionMinutes",5)+" minutes per session\n"+prefs.getInt("dailyMinutes",15)+" minutes browsing per day\n10-minute break between capped sessions");
         panel.addView(text("Reels + Explore blocked · Sponsored posts filtered where detected\n\nInstagram still processes your account activity. Filtering can miss ads and recommendations. Limits apply only here.",13,MUTED));
@@ -312,15 +313,46 @@ public class MainActivity extends Activity {
         input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Visit a profile").setView(input)
             .setNegativeButton("Cancel",null).setPositiveButton("Open",null).create();
-        dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
-            String name=input.getText().toString().trim().replaceFirst("^@", "");
-            if (!name.matches("[A-Za-z0-9_][A-Za-z0-9_.]{0,29}") || name.contains("..") || name.endsWith(".")
-                || Arrays.asList("direct","accounts","challenge","checkpoint","two_factor","p","reel","reels","explore","tv","stories").contains(name.toLowerCase(Locale.ROOT))) {
-                input.setError("Enter a profile username, not a link or Instagram section."); return;
-            }
-            dialog.dismiss(); navigate(BASE+"/"+name+"/");
-        }));
+        dialog.setButton(AlertDialog.BUTTON_NEUTRAL,"Save & open",(DialogInterface.OnClickListener)null);
+        dialog.setOnShowListener(d->{
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->openEnteredProfile(input,dialog,false));
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->openEnteredProfile(input,dialog,true));
+        });
         dialog.show();
+    }
+    private SortedSet<String> savedProfiles() {
+        SortedSet<String> result=new TreeSet<>();
+        for (String raw:prefs.getStringSet("savedProfiles",Collections.emptySet())) {
+            String name=Policy.profileName(raw); if(name!=null && result.size()<20) result.add(name);
+        }
+        return result;
+    }
+    private void openEnteredProfile(EditText input,AlertDialog dialog,boolean save) {
+        String name=Policy.profileName(input.getText().toString());
+        if (name==null) {input.setError("Enter a profile username, not a link or Instagram section.");return;}
+        if(save) {
+            Set<String> names=savedProfiles();
+            if(names.size()>=20 && !names.contains(name)) {input.setError("You have 20 saved profiles. Remove one first.");return;}
+            names.add(name);prefs.edit().putStringSet("savedProfiles",new HashSet<>(names)).apply();
+        }
+        dialog.dismiss();navigate(BASE+"/"+name+"/");
+    }
+    private void showSavedProfiles() {
+        String[] names=savedProfiles().toArray(new String[0]);
+        if(names.length==0) {
+            new AlertDialog.Builder(this).setTitle("Saved profiles")
+                .setMessage("Save up to 20 usernames for deliberate visits. They stay on this device; nothing is fetched until you open a profile.")
+                .setPositiveButton("Add a profile",(d,w)->visitProfile()).setNegativeButton("Close",null).show();return;
+        }
+        new AlertDialog.Builder(this).setTitle("Saved profiles · on this device").setItems(names,(d,n)->{
+            String name=names[n];
+            new AlertDialog.Builder(this).setTitle("@"+name)
+                .setPositiveButton("Open",(a,b)->navigate(BASE+"/"+name+"/"))
+                .setNeutralButton("Remove saved profile",(a,b)->{
+                    Set<String> saved=savedProfiles();saved.remove(name);
+                    prefs.edit().putStringSet("savedProfiles",new HashSet<>(saved)).apply();showHome();
+                }).setNegativeButton("Cancel",null).show();
+        }).setPositiveButton("Add a profile",(d,w)->visitProfile()).setNegativeButton("Close",null).show();
     }
     private void refreshPage() {
         String url=web.getUrl();
