@@ -53,27 +53,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val AtaraxiaColors = darkColorScheme(
-    primary = Color(0xFF7FD29B),
-    onPrimary = Color(0xFF0B1411),
-    primaryContainer = Color(0xFF20332A),
-    onPrimaryContainer = Color(0xFFBCE8C9),
-    background = Color(0xFF0B1411),
-    onBackground = Color(0xFFF3F0E7),
-    surface = Color(0xFF111E19),
-    onSurface = Color(0xFFF3F0E7),
-    surfaceVariant = Color(0xFF182721),
-    onSurfaceVariant = Color(0xFF9FB1A7),
-    outline = Color(0xFF2D4137)
-)
-
 @Composable
-private fun AtaraxiaTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = AtaraxiaColors, content = content)
-}
-
-@Composable
-private fun Eyebrow(text: String) {
+internal fun Eyebrow(text: String) {
     Text(
         text = text,
         color = MaterialTheme.colorScheme.primary,
@@ -84,11 +65,11 @@ private fun Eyebrow(text: String) {
 }
 
 @Composable
-private fun PrimaryAction(label: String, onClick: () -> Unit) {
+internal fun PrimaryAction(label: String, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().height(56.dp),
-        shape = RoundedCornerShape(18.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary
@@ -293,7 +274,7 @@ class AtaraxiaHomeView @JvmOverloads constructor(
             )
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.surface
             ) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
@@ -350,7 +331,7 @@ class AtaraxiaHomeView @JvmOverloads constructor(
     private fun IntentAction(title: String, body: String, action: String, onClick: () -> Unit) {
         Surface(
             modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-            shape = RoundedCornerShape(22.dp),
+            shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surfaceVariant
         ) {
             Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
@@ -396,7 +377,7 @@ class AtaraxiaBottomBarView @JvmOverloads constructor(
         )
         Surface(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            shape = RoundedCornerShape(24.dp),
+            shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
         ) {
