@@ -1,38 +1,51 @@
-"""Static contract for the dependency-free modern Android visual system."""
+"""Static contract for the staged Material 3 Compose migration."""
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 activity = (root / "app/src/main/java/app/ataraxia/social/MainActivity.java").read_text()
+chrome = (root / "app/src/main/java/app/ataraxia/social/AtaraxiaChrome.kt").read_text()
 build = (root / "app/build.gradle").read_text()
 
-required = [
-    "SOCIAL MEDIA, IN MEASURE",
-    "private static final int BG = 0xff0b1411",
-    "ACCENT_STRONG = 0xff7fd29b",
-    "modePill=pill(",
-    "updateModePill()",
-    "ProgressBar progress=",
-    'section("CHOOSE AN INTENTION")',
+legacy_contract = [
     'actionTile("Messages"',
-    'addNav(nav,"Feed"',
     'actionTile("Following feed"',
     'metricRow("POSTS"',
     "private void stepDots(int page)",
-    "RippleDrawable",
     "setAccessibilityHeading(true)",
     "panel.animate().alpha(1f)",
     "web.animate().alpha(1f)",
     "private void selectNav(String label)",
+    "AtaraxiaTopBarView",
+    "AtaraxiaBottomBarView",
 ]
-for token in required:
-    assert token in activity, f"Missing modern UI contract: {token}"
+for token in legacy_contract:
+    assert token in activity, f"Missing preserved shell contract: {token}"
 
-for forbidden in ["com.google.android.material", "androidx.compose", "LottieAnimationView"]:
-    assert forbidden not in activity and forbidden not in build, f"Unexpected UI dependency: {forbidden}"
+compose_contract = [
+    "darkColorScheme(",
+    "MaterialTheme(",
+    "NavigationBar(",
+    "NavigationBarItem(",
+    'Triple("Feed", "F", feedAction)',
+    "animateColorAsState(",
+    "semantics { heading() }",
+    "RoundedCornerShape(24.dp)",
+]
+for token in compose_contract:
+    assert token in chrome, f"Missing Compose UI contract: {token}"
 
-assert '"Browse deliberately"' not in activity, "Feed navigation must use direct language"
-assert "implementation " not in build and "implementation(" not in build, "UI redesign must not add runtime dependencies"
+for dependency in [
+    "androidx.activity:activity-compose",
+    "androidx.compose.ui:ui",
+    "androidx.compose.material3:material3",
+]:
+    assert dependency in build, f"Missing reviewed Compose dependency: {dependency}"
+
+for forbidden in ["LottieAnimationView", "FirebaseAnalytics", "com.google.android.gms"]:
+    assert forbidden not in activity and forbidden not in chrome and forbidden not in build
+
+assert '"Browse deliberately"' not in activity
 assert activity.count("setDuration(") <= 6, "Keep motion restrained rather than decorative"
-assert "INTERNET" not in activity, "Permissions belong only in the reviewed manifest"
+assert "INTERNET" not in activity and "INTERNET" not in chrome, "Permissions belong only in the reviewed manifest"
 
-print(f"PASS: {len(required)} modern UI assertions; native dependency-free visual system")
+print(f"PASS: staged Compose Material 3 shell with preserved WebView controls")
