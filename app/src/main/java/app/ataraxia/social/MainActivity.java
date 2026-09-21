@@ -93,10 +93,8 @@ public class MainActivity extends Activity {
         addNav(nav,"Browse",()->{if(focused())visitProfile();else openFeed();}); addNav(nav,"Settings",()->settings()); root.addView(nav);
         setContentView(root);
         configureWeb();
-        showHome();
-        if (!prefs.getBoolean("intro",false)) new AlertDialog.Builder(this).setTitle("A quieter way in")
-            .setMessage("Ataraxia displays Instagram's website with local filters. Meta still receives your activity.\n\nReels and Explore routes are blocked. Feed limits are voluntary. Sponsored-post filtering is best effort and can break when Instagram changes.\n\nNo admin, Accessibility, VPN or contacts permissions. No analytics. Calls and background notifications are not supported in this pilot.")
-            .setPositiveButton("Continue",(d,w)->prefs.edit().putBoolean("intro",true).apply()).show();
+        if (prefs.getBoolean("philosophyIntro",false)) showHome();
+        else showPhilosophy(0,true);
     }
     private void configureWeb() {
         WebSettings s = web.getSettings();
@@ -276,8 +274,53 @@ public class MainActivity extends Activity {
         button(panel,"Visit a profile",()->visitProfile());
         button(panel,"Saved profiles ("+savedProfiles().size()+")",()->showSavedProfiles());
         button(panel,"Change mode",()->chooseMode());
+        button(panel,"Why Ataraxia?",()->showPhilosophy(0,false));
         space(); card("YOUR BOUNDARIES",prefs.getInt("postLimit",10)+" posts per session\n"+prefs.getInt("sessionMinutes",5)+" minutes per session\n"+prefs.getInt("dailyMinutes",15)+" minutes browsing per day\n10-minute break between capped sessions");
         panel.addView(text("Reels + Explore blocked · Sponsored posts filtered where detected\n\nInstagram still processes your account activity. Filtering can miss ads and recommendations. Limits apply only here.",13,MUTED));
+    }
+    private void showPhilosophy(int page,boolean onboarding) {
+        basePanel();
+        if(page==0) {
+            panel.addView(text("About 4,000 weeks.",13,ACCENT));
+            panel.addView(text("Time is the one thing\nyou cannot replace.",34,INK));
+            panel.addView(text("An 80-year life is roughly 4,174 weeks. The point is not to fear that number. It is to remember that attention is how life is spent.",17,MUTED));
+            space();
+            card("A FINITE LIFE","Infinite feeds behave as though your time has no edge. Your life does. Ataraxia makes the boundary visible.");
+            card("THE AIM","Use social media deliberately: connect, create, respond—then return to the life beyond the screen.");
+            button(panel,"Continue · What is Ataraxia?",()->showPhilosophy(1,onboarding));
+            if(!onboarding) button(panel,"Back home",()->showHome());
+            return;
+        }
+        if(page==1) {
+            panel.addView(text("Ataraxia",13,ACCENT));
+            panel.addView(text("Freedom from\nunnecessary disturbance.",34,INK));
+            panel.addView(text("The ancient Greek ideal was not numbness or withdrawal. It was a steadier mind—less governed by noise, impulse and manufactured urgency.",17,MUTED));
+            space();
+            card("ATTENTION","Notice what is asking for your mind before giving it away.");
+            card("INTENTION","Open with a purpose instead of surrendering to whatever appears next.");
+            card("MODERATION","Enough is a complete experience. More is not automatically better.");
+            card("AGENCY","The boundary belongs to you. Ataraxia supports your choice; it does not claim control over you.");
+            button(panel,"Continue · Choose how to enter",()->showPhilosophy(2,onboarding));
+            button(panel,"Back",()->showPhilosophy(0,onboarding));
+            return;
+        }
+        panel.addView(text("Choose with intention.",13,ACCENT));
+        panel.addView(text("What are you here to do?",34,INK));
+        panel.addView(text("Both modes keep Reels and Explore blocked. You can change modes and boundaries whenever you choose.",17,MUTED));
+        space();
+        card("FOCUSED","Messages and deliberate profile visits. The home feed stays unavailable.");
+        button(panel,"Begin in Focused mode",()->finishPhilosophy(true,onboarding));
+        card("BALANCED","Messages, profiles and a short feed contained by your post, session and daily limits.");
+        button(panel,"Begin in Balanced mode",()->finishPhilosophy(false,onboarding));
+        button(panel,"Back",()->showPhilosophy(1,onboarding));
+        space();
+        panel.addView(text("Ataraxia is free and has no developer ads or analytics. It displays Instagram's website, so Meta still processes your account activity. Filtering is best effort and limits apply only inside this app.",13,MUTED));
+    }
+    private void finishPhilosophy(boolean focusedMode,boolean onboarding) {
+        prefs.edit().putBoolean("focused",focusedMode).putBoolean("philosophyIntro",true).putBoolean("intro",true).apply();
+        web.stopLoading();
+        showHome();
+        if(onboarding) Toast.makeText(this,focusedMode?"Focused mode selected.":"Balanced mode selected.",Toast.LENGTH_SHORT).show();
     }
     private void showLimit() {
         if(prefs.getLong("cooldown",0)==0) prefs.edit().putLong("cooldown",System.currentTimeMillis()+10*60000L).apply();
@@ -288,7 +331,7 @@ public class MainActivity extends Activity {
     }
     private void showError(String message) { basePanel(); panel.addView(text("Connection paused",28,INK)); panel.addView(text(message,17,MUTED)); button(panel,"Try inbox again",()->navigate(BASE+"/direct/inbox/")); }
     private void settings() {
-        new AlertDialog.Builder(this).setTitle("Your boundaries").setItems(new String[]{"Posts per session","Minutes per session","Daily browsing minutes","Privacy and limitations","Clear Instagram login","Refresh current page","Filter status","Focused / Balanced mode","Export settings","Import settings"},(d,which)->{
+        new AlertDialog.Builder(this).setTitle("Your boundaries").setItems(new String[]{"Posts per session","Minutes per session","Daily browsing minutes","Privacy and limitations","Clear Instagram login","Refresh current page","Filter status","Focused / Balanced mode","Export settings","Import settings","Philosophy and purpose"},(d,which)->{
             if(which==0) choose("postLimit","Posts per session",new int[]{5,10,15,20});
             if(which==1) choose("sessionMinutes","Minutes per session",new int[]{2,5,10});
             if(which==2) choose("dailyMinutes","Daily browsing minutes",new int[]{5,15,30,60});
@@ -297,6 +340,7 @@ public class MainActivity extends Activity {
                 .setPositiveButton("Done",null).show();
             if(which==8) settingsFile(true);
             if(which==9) settingsFile(false);
+            if(which==10) showPhilosophy(0,false);
             if(which==7) chooseMode();
             if(which==5) refreshPage();
             if(which==6) filterStatus();
