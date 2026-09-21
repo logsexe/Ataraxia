@@ -21,7 +21,7 @@
   };
   const blockedPath = p => /^\/(reels?|explore|tv)(\/|$)/i.test(p.replace(/\/+/g, '/'));
   const isFeed = () => location.pathname === '/';
-  const labels = new Set(['ad', 'advertisement', 'sponsored', 'geborg', 'geborgde', 'suggested for you', 'voorgestel vir jou']);
+  const labels = new Set(['ad', 'advertisement', 'sponsored', 'geborg', 'geborgde', 'suggested for you', 'voorgestel vir jou', 'follow']);
   const style = document.createElement('style');
   style.textContent = '[data-quiet-hidden="true"]{display:none!important}[data-quiet-home-hidden="true"]{display:none!important}html[data-quiet-focused] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-focused]::after{content:"Focused mode. Open Inbox or Home below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}html{scroll-behavior:auto!important}html[data-quiet-capped] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-capped]::after{content:"Session post limit reached. Use Inbox below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}';
   (document.head || document.documentElement).appendChild(style);
