@@ -14,7 +14,7 @@ required_activity = [
     'prefs.getBoolean("philosophyIntro",false)',
     "showPhilosophy(0,true)",
     "private void showPhilosophy(int page,boolean onboarding)",
-    "About 4,000 weeks.",
+    "ABOUT 4,000 WEEKS",
     "roughly 4,174 weeks",
     "ATTENTION",
     "INTENTION",
