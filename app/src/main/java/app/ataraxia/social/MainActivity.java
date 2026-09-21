@@ -292,42 +292,15 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         panel.addView(home,new LinearLayout.LayoutParams(-1,-2));
     }
     private void showPhilosophy(int page,boolean onboarding) {
-        basePanel();selectNav("Home");stepDots(page);
-        if(page==0) {
-            eyebrow("ABOUT 4,000 WEEKS");
-            heading("Time is the one thing\nyou cannot replace.");
-            panel.addView(text("An 80-year life is roughly 4,174 weeks. The point is not to fear that number. It is to remember that attention is how life is spent.",17,MUTED));
-            space();
-            card("A FINITE LIFE","Infinite feeds behave as though your time has no edge. Your life does. Ataraxia makes the boundary visible.");
-            card("THE AIM","Use social media deliberately: connect, create, respond—then return to the life beyond the screen.");
-            button(panel,"Continue · What is Ataraxia?",()->showPhilosophy(1,onboarding));
-            if(!onboarding) button(panel,"Back home",()->showHome());
-            return;
-        }
-        if(page==1) {
-            eyebrow("ATARAXIA");
-            heading("Freedom from\nunnecessary disturbance.");
-            panel.addView(text("The ancient Greek ideal was not numbness or withdrawal. It was a steadier mind—less governed by noise, impulse and manufactured urgency.",17,MUTED));
-            space();
-            card("ATTENTION","Notice what is asking for your mind before giving it away.");
-            card("INTENTION","Open with a purpose instead of surrendering to whatever appears next.");
-            card("MODERATION","Enough is a complete experience. More is not automatically better.");
-            card("AGENCY","The boundary belongs to you. Ataraxia supports your choice; it does not claim control over you.");
-            button(panel,"Continue · Choose how to enter",()->showPhilosophy(2,onboarding));
-            button(panel,"Back",()->showPhilosophy(0,onboarding));
-            return;
-        }
-        eyebrow("CHOOSE WITH INTENTION");
-        heading("What are you here to do?");
-        panel.addView(text("Both modes keep Reels and Explore blocked. You can change modes and boundaries whenever you choose.",17,MUTED));
-        space();
-        card("FOCUSED","Messages only. The home feed stays unavailable.");
-        button(panel,"Begin in Focused mode",()->finishPhilosophy(true,onboarding));
-        card("BALANCED","Messages and a short feed contained by your post, session and daily limits.");
-        button(panel,"Begin in Balanced mode",()->finishPhilosophy(false,onboarding));
-        button(panel,"Back",()->showPhilosophy(1,onboarding));
-        space();
-        panel.addView(text("Ataraxia is free and has no developer ads or analytics. It displays Instagram's website, so Meta still processes your account activity. Filtering is best effort and limits apply only inside this app.",13,MUTED));
+        basePanel();selectNav("Home");panel.setPadding(0,0,0,0);
+        AtaraxiaPhilosophyView philosophy=new AtaraxiaPhilosophyView(this);
+        philosophy.update(page,onboarding);
+        philosophy.setActions(
+            ()->showPhilosophy(Math.min(2,page+1),onboarding),
+            ()->{if(page==0)showHome();else showPhilosophy(page-1,onboarding);},
+            ()->finishPhilosophy(true,onboarding),
+            ()->finishPhilosophy(false,onboarding));
+        panel.addView(philosophy,new LinearLayout.LayoutParams(-1,-2));
     }
     private void finishPhilosophy(boolean focusedMode,boolean onboarding) {
         prefs.edit().putBoolean("focused",focusedMode).putBoolean("philosophyIntro",true).putBoolean("intro",true).apply();
@@ -337,34 +310,39 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void showLimit() {
         if(prefs.getLong("cooldown",0)==0) prefs.edit().putLong("cooldown",System.currentTimeMillis()+10*60000L).apply();
-        basePanel();selectNav("Home");eyebrow("A DELIBERATE END");heading("Enough for now.");
+        basePanel();selectNav("Home");panel.setPadding(0,0,0,0);
         boolean daily=prefs.getLong("dailyMs",0)>=prefs.getInt("dailyMinutes",15)*60000L;
-        panel.addView(text(daily?"You've used today's browsing allowance. Your inbox is still available.":"You've reached your session boundary. Take a 10-minute break; reopening the app won't reset it.",18,MUTED));
-        space(); button(panel,"Go to inbox",()->navigate(BASE+"/direct/inbox/")); button(panel,"Back home",()->showHome());
+        AtaraxiaEndView end=new AtaraxiaEndView(this);
+        end.update(daily);
+        end.setActions(()->navigate(BASE+"/direct/inbox/"),()->showHome());
+        panel.addView(end,new LinearLayout.LayoutParams(-1,-2));
     }
     private void showError(String message) { basePanel(); panel.addView(text("Connection paused",28,INK)); panel.addView(text(message,17,MUTED)); button(panel,"Try inbox again",()->navigate(BASE+"/direct/inbox/")); }
     private void settings() {
-        selectNav("Settings");
-        new AlertDialog.Builder(this).setTitle("Your boundaries").setItems(new String[]{"Posts per session","Minutes per session","Daily browsing minutes","Privacy and limitations","Clear Instagram login","Refresh current page","Filter status","Focused / Balanced mode","Export settings","Import settings","Philosophy and purpose"},(d,which)->{
-            if(which==0) choose("postLimit","Posts per session",new int[]{5,10,15,20});
-            if(which==1) choose("sessionMinutes","Minutes per session",new int[]{2,5,10});
-            if(which==2) choose("dailyMinutes","Daily browsing minutes",new int[]{5,15,30,60});
-            if(which==3) new AlertDialog.Builder(this).setTitle("Local controls, honest limits")
-                .setMessage("Only Internet permission. No analytics, admin, Accessibility, VPN or notification access.\n\nInstagram login cookies remain in this app's private WebView storage; Meta still receives activity. Android backup is disabled. Settings and counters stay on-device.\n\nSponsored-post detection currently targets English and Afrikaans labels in recognised feed markup. It can miss ads. Post counting can miss unsupported layouts; native time limits remain active.\n\nNo calls, background notifications, downloads or Facebook sign-in support. Use username/password and 2FA on Instagram's own page.\n\nLimits are voluntary: settings, clock changes, clearing app data or other apps can bypass them. This is not parental-control enforcement.")
-                .setPositiveButton("Done",null).show();
-            if(which==8) settingsFile(true);
-            if(which==9) settingsFile(false);
-            if(which==10) showPhilosophy(0,false);
-            if(which==7) chooseMode();
-            if(which==5) refreshPage();
-            if(which==6) filterStatus();
-            if(which==4) new AlertDialog.Builder(this).setTitle("Clear Instagram session?").setMessage("Removes this app's login cookies, website storage and cache. Your limits remain.")
-                .setNegativeButton("Cancel",null).setPositiveButton("Clear",(a,b)->{
-                    web.stopLoading(); showHome(); web.loadUrl("about:blank");
-                    CookieManager.getInstance().removeAllCookies(value->CookieManager.getInstance().flush());
-                    WebStorage.getInstance().deleteAllData(); web.clearCache(true); web.clearHistory();
-                }).show();
-        }).show();
+        basePanel();selectNav("Settings");panel.setPadding(0,0,0,0);
+        AtaraxiaSettingsView settings=new AtaraxiaSettingsView(this);
+        settings.update(focused(),prefs.getInt("postLimit",10),prefs.getInt("sessionMinutes",5),prefs.getInt("dailyMinutes",15));
+        settings.setActions(
+            ()->choose("postLimit","Posts per session",new int[]{5,10,15,20}),
+            ()->choose("sessionMinutes","Minutes per session",new int[]{2,5,10}),
+            ()->choose("dailyMinutes","Daily browsing minutes",new int[]{5,15,30,60}),
+            ()->chooseMode(),()->showPrivacy(),()->clearInstagramSession(),
+            ()->settingsFile(true),()->settingsFile(false),()->showPhilosophy(0,false));
+        panel.addView(settings,new LinearLayout.LayoutParams(-1,-2));
+    }
+    private void showPrivacy() {
+        new AlertDialog.Builder(this).setTitle("Local controls, honest limits")
+            .setMessage("Only Internet permission. No analytics, admin, Accessibility, VPN or notification access.\n\nInstagram login cookies remain in this app's private WebView storage; Meta still receives activity. Android backup is disabled. Settings and counters stay on-device.\n\nSponsored-post detection targets recognised feed markup and can miss ads. Post counting can miss unsupported layouts; native time limits remain active.\n\nNo calls, background notifications, downloads or Facebook sign-in support. Limits are voluntary, not parental-control enforcement.")
+            .setPositiveButton("Done",null).show();
+    }
+    private void clearInstagramSession() {
+        new AlertDialog.Builder(this).setTitle("Clear Instagram session?")
+            .setMessage("Removes this app's login cookies, website storage and cache. Your limits remain.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Clear",(a,b)->{
+                web.stopLoading(); showHome(); web.loadUrl("about:blank");
+                CookieManager.getInstance().removeAllCookies(value->CookieManager.getInstance().flush());
+                WebStorage.getInstance().deleteAllData(); web.clearCache(true); web.clearHistory();
+            }).show();
     }
     private void chooseMode() {
         new AlertDialog.Builder(this).setTitle("Choose your mode")
