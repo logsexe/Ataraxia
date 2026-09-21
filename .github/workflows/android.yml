@@ -31,9 +31,11 @@ jobs:
           javac -d build/tests \
             app/src/main/java/app/ataraxia/social/Policy.java \
             app/src/main/java/app/ataraxia/social/Budget.java \
-            tests/PolicyTest.java tests/BudgetTest.java
+            app/src/main/java/app/ataraxia/social/SettingsBackup.java \
+            tests/PolicyTest.java tests/BudgetTest.java tests/SettingsBackupTest.java
           java -cp build/tests PolicyTest
           java -cp build/tests BudgetTest
+          java -cp build/tests SettingsBackupTest
       - name: Test feed filters and fast scrolling
         run: |
           node --check app/src/main/assets/filter.js
@@ -58,25 +60,25 @@ jobs:
         run: |
           mkdir -p dist
           cp build/privacy-review.json dist/privacy-review.json
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Ataraxia-0.1.5-preview.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Ataraxia-0.1.6-preview.apk
           sdk_tools="$ANDROID_HOME/build-tools/35.0.0"
-          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Ataraxia-0.1.5-preview.apk > dist/SIGNATURE.txt
-          "$sdk_tools/zipalign" -c -p 4 dist/Ataraxia-0.1.5-preview.apk
-          "$sdk_tools/aapt" dump badging dist/Ataraxia-0.1.5-preview.apk > dist/manifest.txt
+          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Ataraxia-0.1.6-preview.apk > dist/SIGNATURE.txt
+          "$sdk_tools/zipalign" -c -p 4 dist/Ataraxia-0.1.6-preview.apk
+          "$sdk_tools/aapt" dump badging dist/Ataraxia-0.1.6-preview.apk > dist/manifest.txt
           python3 - <<'PY'
           from pathlib import Path
           text = Path('dist/manifest.txt').read_text()
-          assert "package: name='app.ataraxia.social' versionCode='6' versionName='0.1.5-preview'" in text
+          assert "package: name='app.ataraxia.social' versionCode='7' versionName='0.1.6-preview'" in text
           permissions = [line for line in text.splitlines() if line.startswith('uses-permission:')]
           assert permissions == ["uses-permission: name='android.permission.INTERNET'"], permissions
           assert 'application-debuggable' not in text
           print('Verified identity, version, Internet-only permissions and non-debuggable manifest')
           PY
           cd dist
-          sha256sum Ataraxia-0.1.5-preview.apk > SHA256SUMS.txt
+          sha256sum Ataraxia-0.1.6-preview.apk > SHA256SUMS.txt
       - name: Upload verified pilot APK
         uses: actions/upload-artifact@v4
         with:
-          name: Ataraxia-0.1.5-preview
+          name: Ataraxia-0.1.6-preview
           path: dist/*
           if-no-files-found: error

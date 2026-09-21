@@ -30,6 +30,7 @@ public class MainActivity extends Activity {
     private long lastTick;
     private String script;
     private ValueCallback<Uri[]> fileCallback;
+    private final java.util.concurrent.ExecutorService backupIO=java.util.concurrent.Executors.newSingleThreadExecutor();
     private final Set<String> seen = new HashSet<>();
     private int generation, sessionGeneration;
     private final Runnable ticker = new Runnable() {
@@ -169,6 +170,11 @@ public class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
+        if(request==43 || request==44) {
+            if(result==RESULT_OK && data!=null && data.getData()!=null && "content".equals(data.getData().getScheme()))
+                transferSettings(request==43,data.getData());
+            return;
+        }
         if (request==42 && fileCallback!=null) {
             List<Uri> chosen=new ArrayList<>();
             if (result==RESULT_OK && data!=null && Policy.internal(web.getUrl())) {
@@ -282,13 +288,15 @@ public class MainActivity extends Activity {
     }
     private void showError(String message) { basePanel(); panel.addView(text("Connection paused",28,INK)); panel.addView(text(message,17,MUTED)); button(panel,"Try inbox again",()->navigate(BASE+"/direct/inbox/")); }
     private void settings() {
-        new AlertDialog.Builder(this).setTitle("Your boundaries").setItems(new String[]{"Posts per session","Minutes per session","Daily browsing minutes","Privacy and limitations","Clear Instagram login","Refresh current page","Filter status","Focused / Balanced mode"},(d,which)->{
+        new AlertDialog.Builder(this).setTitle("Your boundaries").setItems(new String[]{"Posts per session","Minutes per session","Daily browsing minutes","Privacy and limitations","Clear Instagram login","Refresh current page","Filter status","Focused / Balanced mode","Export settings","Import settings"},(d,which)->{
             if(which==0) choose("postLimit","Posts per session",new int[]{5,10,15,20});
             if(which==1) choose("sessionMinutes","Minutes per session",new int[]{2,5,10});
             if(which==2) choose("dailyMinutes","Daily browsing minutes",new int[]{5,15,30,60});
             if(which==3) new AlertDialog.Builder(this).setTitle("Local controls, honest limits")
                 .setMessage("Only Internet permission. No analytics, admin, Accessibility, VPN or notification access.\n\nInstagram login cookies remain in this app's private WebView storage; Meta still receives activity. Android backup is disabled. Settings and counters stay on-device.\n\nSponsored-post detection currently targets English and Afrikaans labels in recognised feed markup. It can miss ads. Post counting can miss unsupported layouts; native time limits remain active.\n\nNo calls, background notifications, downloads or Facebook sign-in support. Use username/password and 2FA on Instagram's own page.\n\nLimits are voluntary: settings, clock changes, clearing app data or other apps can bypass them. This is not parental-control enforcement.")
                 .setPositiveButton("Done",null).show();
+            if(which==8) settingsFile(true);
+            if(which==9) settingsFile(false);
             if(which==7) chooseMode();
             if(which==5) refreshPage();
             if(which==6) filterStatus();
@@ -354,6 +362,58 @@ public class MainActivity extends Activity {
                 }).setNegativeButton("Cancel",null).show();
         }).setPositiveButton("Add a profile",(d,w)->visitProfile()).setNegativeButton("Close",null).show();
     }
+    private void settingsFile(boolean export) {
+        String message=export
+            ? "Exports your mode, boundaries and saved usernames as a readable file. It excludes Instagram login, messages and usage history. Choose a location you trust; cloud document providers may upload it."
+            : "Select an Ataraxia settings backup. You can review its mode and boundaries before replacing your settings. Login and current usage counters are not changed.";
+        new AlertDialog.Builder(this).setTitle(export?"Export settings":"Import settings").setMessage(message)
+            .setNegativeButton("Cancel",null).setPositiveButton("Choose file",(d,w)->{
+                Intent intent=new Intent(export?Intent.ACTION_CREATE_DOCUMENT:Intent.ACTION_OPEN_DOCUMENT)
+                    .addCategory(Intent.CATEGORY_OPENABLE).setType(export?"text/plain":"*/*");
+                if(export) intent.putExtra(Intent.EXTRA_TITLE,"Ataraxia-settings.properties");
+                try{startActivityForResult(intent,export?43:44);}
+                catch(ActivityNotFoundException e){Toast.makeText(this,"No document picker available.",Toast.LENGTH_LONG).show();}
+            }).show();
+    }
+    private void backupUi(Runnable action) {
+        handler.post(()->{if(!isFinishing() && !isDestroyed())action.run();});
+    }
+    private void transferSettings(boolean export,Uri uri) {
+        final SettingsBackup snapshot=new SettingsBackup(focused(),prefs.getInt("postLimit",10),
+            prefs.getInt("sessionMinutes",5),prefs.getInt("dailyMinutes",15),savedProfiles());
+        backupIO.execute(()->{
+            try {
+                if(export) {
+                    try(OutputStream out=getContentResolver().openOutputStream(uri,"wt")) {
+                        if(out==null)throw new IOException("No output");
+                        out.write(snapshot.encode());out.flush();
+                    }
+                    backupUi(()->Toast.makeText(this,"Settings exported. Login and usage history were excluded.",Toast.LENGTH_LONG).show());
+                } else {
+                    final SettingsBackup incoming;
+                    try(InputStream in=getContentResolver().openInputStream(uri)) {incoming=SettingsBackup.decode(in);}
+                    backupUi(()->confirmSettingsImport(incoming));
+                }
+            } catch(IOException|IllegalArgumentException|SecurityException e) {
+                backupUi(()->new AlertDialog.Builder(this).setTitle(export?"Export failed":"Import rejected")
+                    .setMessage(export?"Could not finish writing the file. Remove any incomplete file and try another location.":"The file is unreadable, too large or not a supported settings backup. Your settings have not changed.")
+                    .setPositiveButton("Done",null).show());
+            }
+        });
+    }
+    private void confirmSettingsImport(SettingsBackup incoming) {
+        new AlertDialog.Builder(this).setTitle("Replace settings?")
+            .setMessage((incoming.focused?"Focused":"Balanced")+" mode\n"+incoming.posts+" posts per session\n"
+                +incoming.sessionMinutes+" minutes per session\n"+incoming.dailyMinutes+" minutes per day\n"
+                +incoming.profiles.size()+" saved profiles\n\nReplaces current preferences and saved profiles. Existing login, usage counters and cooldown stay unchanged.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Replace settings",(d,w)->{
+                prefs.edit().putBoolean("focused",incoming.focused).putInt("postLimit",incoming.posts)
+                    .putInt("sessionMinutes",incoming.sessionMinutes).putInt("dailyMinutes",incoming.dailyMinutes)
+                    .putStringSet("savedProfiles",new HashSet<>(incoming.profiles)).apply();
+                sessionGeneration++;web.stopLoading();showHome();
+                Toast.makeText(this,"Settings restored.",Toast.LENGTH_SHORT).show();
+            }).show();
+    }
     private void refreshPage() {
         String url=web.getUrl();
         if (!browsing || !Policy.internal(url)) {
@@ -413,5 +473,5 @@ public class MainActivity extends Activity {
         }
         showHome();
     }
-    @Override protected void onDestroy(){handler.removeCallbacks(ticker);if(fileCallback!=null)fileCallback.onReceiveValue(null);if(web!=null){content.removeView(web);web.destroy();}super.onDestroy();}
+    @Override protected void onDestroy(){backupIO.shutdownNow();handler.removeCallbacks(ticker);if(fileCallback!=null)fileCallback.onReceiveValue(null);if(web!=null){content.removeView(web);web.destroy();}super.onDestroy();}
 }
