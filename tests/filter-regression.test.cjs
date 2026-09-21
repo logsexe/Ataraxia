@@ -44,6 +44,9 @@ assert.equal(f.articles[1].dataset.quietHidden,undefined,'caption text preserved
 assert.equal(f.articles[2].dataset.quietHidden,'true');
 f=fixture([{aria:'Sponsored',media:true,before:true}]);
 assert.equal(f.articles[0].dataset.quietHidden,'true','accessible ad label recognised');
+f=fixture([{label:'Follow',header:true},{label:'Follow',media:true,before:false}]);
+assert.equal(f.articles[0].dataset.quietHidden,'true','recognised suggested-account post hidden');
+assert.equal(f.articles[1].dataset.quietHidden,undefined,'caption text containing Follow preserved');
 f=fixture(Array.from({length:20},()=>({})));
 f.state.__ataraxiaStillness.configure({limit:3,ids:['Older1','Older2']});
 assert.ok(f.attrs.has('data-quiet-capped'),'restored native counts contribute to cap');
