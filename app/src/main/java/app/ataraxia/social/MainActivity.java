@@ -66,6 +66,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         getWindow().setNavigationBarColor(BG);
         getWindow().setNavigationBarDividerColor(BG);
         prefs = getSharedPreferences("quiet-local", MODE_PRIVATE);
+        prefs.edit().remove("savedProfiles").apply();
         rollDay();
         seen.addAll(prefs.getStringSet("seen", Collections.emptySet()));
         try (InputStream in = getAssets().open("filter.js")) {
@@ -97,7 +98,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         root.addView(composeBottomBar,new LinearLayout.LayoutParams(-1,dp(80)));
         setContentView(root);
         configureWeb();
-        if (prefs.getBoolean("philosophyIntro",false)) showHome();
+        if (prefs.getBoolean("philosophyIntro",false)) showLanding();
         else showPhilosophy(0,true);
     }
     private void configureWeb() {
@@ -269,36 +270,26 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         generation++; browsing=false; waitingSnapshot=false;
         web.setVisibility(View.GONE); web.onPause();
         ((View)panel.getTag()).setVisibility(View.VISIBLE); panel.removeAllViews();
+        panel.setPadding(0,dp(28),0,dp(28));
         panel.animate().cancel();panel.setAlpha(0f);panel.setTranslationY(dp(10));
         panel.post(()->panel.animate().alpha(1f).translationY(0f).setDuration(220).start());
         composeTopBar.update(focused()?"FOCUSED":"BALANCED",summary());
     }
+    private void showLanding() {
+        basePanel();selectNav("Home");panel.setPadding(0,0,0,0);
+        AtaraxiaLandingView landing=new AtaraxiaLandingView(this);
+        landing.setActions(()->showHome(),()->showPhilosophy(0,false));
+        panel.addView(landing,new LinearLayout.LayoutParams(-1,-2));
+    }
     private void showHome() {
-        basePanel();selectNav("Home");
-        eyebrow("YOUR SPACE");
-        heading("Your attention.\nYour choice.");
-        panel.addView(text(focused()?"Focused mode keeps the feed out of sight. Choose a person or conversation.":"Balanced mode gives the feed a clear ending, chosen by you.",16,MUTED));
-        space();
-        LinearLayout today=container(CARD_ALT,24,ACCENT_STRONG,1);today.setPadding(dp(20),dp(18),dp(20),dp(18));
-        TextView todayLabel=text("TODAY",11,ACCENT);todayLabel.setLetterSpacing(.14f);today.addView(todayLabel);
-        TextView remaining=text(summary(),18,INK);remaining.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));today.addView(remaining);
-        int daily=prefs.getInt("dailyMinutes",15);long used=prefs.getLong("dailyMs",0);
-        ProgressBar progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
-        progress.setMax(Math.max(1,daily*60));progress.setProgress((int)Math.min(daily*60,used/1000));
-        progress.setProgressTintList(android.content.res.ColorStateList.valueOf(ACCENT_STRONG));
-        progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(LINE));
-        today.addView(progress,new LinearLayout.LayoutParams(-1,dp(5)));panel.addView(today);space();
-        section("CHOOSE AN INTENTION");
-        actionTile("Messages","Open your inbox without spending your feed allowance.","Open inbox",()->navigate(BASE+"/direct/inbox/"));
-        if(!focused()) actionTile("Following feed","Posts from people you follow. Recognised suggestions are hidden; "+prefs.getInt("postLimit",10)+" posts or "+prefs.getInt("sessionMinutes",5)+" minutes—whichever comes first.","Open feed",()->openFeed());
-        actionTile("Someone specific","Go directly to a profile you chose.","Visit a profile",()->visitProfile());
-        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);
-        secondaryButton(row,"Saved · "+savedProfiles().size(),()->showSavedProfiles());
-        secondaryButton(row,"Change mode",()->chooseMode());panel.addView(row);
-        space();section("YOUR BOUNDARIES");
-        metricRow("POSTS",String.valueOf(prefs.getInt("postLimit",10)),"PER SESSION",prefs.getInt("sessionMinutes",5)+" MIN","PER DAY",prefs.getInt("dailyMinutes",15)+" MIN");
-        secondaryButton(panel,"Why Ataraxia?",()->showPhilosophy(0,false));
-        panel.addView(text("Reels and Explore are blocked. Sponsored content is filtered when detected. Instagram still processes activity and filtering can miss content.",12,MUTED));
+        basePanel();selectNav("Home");panel.setPadding(0,0,0,0);
+        int daily=prefs.getInt("dailyMinutes",15);
+        float progress=Math.min(1f,prefs.getLong("dailyMs",0)/(daily*60000f));
+        AtaraxiaHomeView home=new AtaraxiaHomeView(this);
+        home.update(focused(),summary(),progress,prefs.getInt("postLimit",10),
+            prefs.getInt("sessionMinutes",5),daily);
+        home.setActions(()->navigate(BASE+"/direct/inbox/"),()->openFeed(),()->chooseMode(),()->showPhilosophy(0,false));
+        panel.addView(home,new LinearLayout.LayoutParams(-1,-2));
     }
     private void showPhilosophy(int page,boolean onboarding) {
         basePanel();selectNav("Home");stepDots(page);
@@ -330,9 +321,9 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         heading("What are you here to do?");
         panel.addView(text("Both modes keep Reels and Explore blocked. You can change modes and boundaries whenever you choose.",17,MUTED));
         space();
-        card("FOCUSED","Messages and deliberate profile visits. The home feed stays unavailable.");
+        card("FOCUSED","Messages only. The home feed stays unavailable.");
         button(panel,"Begin in Focused mode",()->finishPhilosophy(true,onboarding));
-        card("BALANCED","Messages, profiles and a short feed contained by your post, session and daily limits.");
+        card("BALANCED","Messages and a short feed contained by your post, session and daily limits.");
         button(panel,"Begin in Balanced mode",()->finishPhilosophy(false,onboarding));
         button(panel,"Back",()->showPhilosophy(1,onboarding));
         space();
@@ -377,61 +368,15 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void chooseMode() {
         new AlertDialog.Builder(this).setTitle("Choose your mode")
-            .setSingleChoiceItems(new String[]{"Focused — inbox and profiles", "Balanced — add a capped feed"},focused()?0:1,(d,n)->{
+            .setSingleChoiceItems(new String[]{"Focused — inbox only", "Balanced — add a capped feed"},focused()?0:1,(d,n)->{
                 prefs.edit().putBoolean("focused",n==0).apply();
                 // Mode changes never reset time, post counts or the cooldown.
                 web.stopLoading(); d.dismiss(); showHome();
             }).setNegativeButton("Cancel",null).show();
     }
-    private void visitProfile() {
-        EditText input=new EditText(this); input.setSingleLine(true); input.setHint("Instagram username");
-        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
-        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Visit a profile").setView(input)
-            .setNegativeButton("Cancel",null).setPositiveButton("Open",null).create();
-        dialog.setButton(AlertDialog.BUTTON_NEUTRAL,"Save & open",(DialogInterface.OnClickListener)null);
-        dialog.setOnShowListener(d->{
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->openEnteredProfile(input,dialog,false));
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->openEnteredProfile(input,dialog,true));
-        });
-        dialog.show();
-    }
-    private SortedSet<String> savedProfiles() {
-        SortedSet<String> result=new TreeSet<>();
-        for (String raw:prefs.getStringSet("savedProfiles",Collections.emptySet())) {
-            String name=Policy.profileName(raw); if(name!=null && result.size()<20) result.add(name);
-        }
-        return result;
-    }
-    private void openEnteredProfile(EditText input,AlertDialog dialog,boolean save) {
-        String name=Policy.profileName(input.getText().toString());
-        if (name==null) {input.setError("Enter a profile username, not a link or Instagram section.");return;}
-        if(save) {
-            Set<String> names=savedProfiles();
-            if(names.size()>=20 && !names.contains(name)) {input.setError("You have 20 saved profiles. Remove one first.");return;}
-            names.add(name);prefs.edit().putStringSet("savedProfiles",new HashSet<>(names)).apply();
-        }
-        dialog.dismiss();navigate(BASE+"/"+name+"/");
-    }
-    private void showSavedProfiles() {
-        String[] names=savedProfiles().toArray(new String[0]);
-        if(names.length==0) {
-            new AlertDialog.Builder(this).setTitle("Saved profiles")
-                .setMessage("Save up to 20 usernames for deliberate visits. They stay on this device; nothing is fetched until you open a profile.")
-                .setPositiveButton("Add a profile",(d,w)->visitProfile()).setNegativeButton("Close",null).show();return;
-        }
-        new AlertDialog.Builder(this).setTitle("Saved profiles · on this device").setItems(names,(d,n)->{
-            String name=names[n];
-            new AlertDialog.Builder(this).setTitle("@"+name)
-                .setPositiveButton("Open",(a,b)->navigate(BASE+"/"+name+"/"))
-                .setNeutralButton("Remove saved profile",(a,b)->{
-                    Set<String> saved=savedProfiles();saved.remove(name);
-                    prefs.edit().putStringSet("savedProfiles",new HashSet<>(saved)).apply();showHome();
-                }).setNegativeButton("Cancel",null).show();
-        }).setPositiveButton("Add a profile",(d,w)->visitProfile()).setNegativeButton("Close",null).show();
-    }
     private void settingsFile(boolean export) {
         String message=export
-            ? "Exports your mode, boundaries and saved usernames as a readable file. It excludes Instagram login, messages and usage history. Choose a location you trust; cloud document providers may upload it."
+            ? "Exports your mode and boundaries as a readable file. It excludes Instagram login, messages and usage history. Choose a location you trust; cloud document providers may upload it."
             : "Select an Ataraxia settings backup. You can review its mode and boundaries before replacing your settings. Login and current usage counters are not changed.";
         new AlertDialog.Builder(this).setTitle(export?"Export settings":"Import settings").setMessage(message)
             .setNegativeButton("Cancel",null).setPositiveButton("Choose file",(d,w)->{
@@ -447,7 +392,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void transferSettings(boolean export,Uri uri) {
         final SettingsBackup snapshot=new SettingsBackup(focused(),prefs.getInt("postLimit",10),
-            prefs.getInt("sessionMinutes",5),prefs.getInt("dailyMinutes",15),savedProfiles());
+            prefs.getInt("sessionMinutes",5),prefs.getInt("dailyMinutes",15),new TreeSet<>());
         backupIO.execute(()->{
             try {
                 if(export) {
@@ -472,11 +417,10 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         new AlertDialog.Builder(this).setTitle("Replace settings?")
             .setMessage((incoming.focused?"Focused":"Balanced")+" mode\n"+incoming.posts+" posts per session\n"
                 +incoming.sessionMinutes+" minutes per session\n"+incoming.dailyMinutes+" minutes per day\n"
-                +incoming.profiles.size()+" saved profiles\n\nReplaces current preferences and saved profiles. Existing login, usage counters and cooldown stay unchanged.")
+                +"\n\nReplaces current mode and boundaries. Legacy saved profiles are ignored. Existing login, usage counters and cooldown stay unchanged.")
             .setNegativeButton("Cancel",null).setPositiveButton("Replace settings",(d,w)->{
                 prefs.edit().putBoolean("focused",incoming.focused).putInt("postLimit",incoming.posts)
-                    .putInt("sessionMinutes",incoming.sessionMinutes).putInt("dailyMinutes",incoming.dailyMinutes)
-                    .putStringSet("savedProfiles",new HashSet<>(incoming.profiles)).apply();
+                    .putInt("sessionMinutes",incoming.sessionMinutes).putInt("dailyMinutes",incoming.dailyMinutes).apply();
                 sessionGeneration++;web.stopLoading();showHome();
                 Toast.makeText(this,"Settings restored.",Toast.LENGTH_SHORT).show();
             }).show();
