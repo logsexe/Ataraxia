@@ -8,8 +8,8 @@ android {
         applicationId 'app.ataraxia.social'
         minSdk 30
         targetSdk 35
-        versionCode 9
-        versionName '0.1.8-preview'
+        versionCode 10
+        versionName '0.1.9-preview'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     signingConfigs {
