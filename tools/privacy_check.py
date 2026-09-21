@@ -11,7 +11,7 @@ assert app.attrib.get(ns+'allowBackup')=='false'
 assert app.attrib.get(ns+'usesCleartextTraffic')=='false'
 assert not app.findall('service'),'Review any new background service'
 build=(root/'app/build.gradle').read_text()
-dependencies=set(re.findall(r"implementation\\s+(?:platform\\()?['\\\"]([^'\\\"]+)",build))
+dependencies=set(re.findall(r"implementation\s+(?:platform\()?['\"]([^'\"]+)",build))
 allowed_dependencies={
  'androidx.compose:compose-bom:2024.12.01',
  'androidx.activity:activity-compose:1.9.3',
