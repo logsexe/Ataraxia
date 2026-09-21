@@ -154,7 +154,7 @@ class AtaraxiaPhilosophyView @JvmOverloads constructor(
                     "An 80-year life is roughly 4,174 weeks. The point is not fear; it is remembering that attention is how life is spent.") {
                     Thought("A FINITE LIFE", "Infinite feeds behave as though your time has no edge. Your life does.")
                     Thought("THE AIM", "Connect, create and respond—then return to the life beyond the screen.")
-                    FullButton("Continue · What is Ataraxia?") { next?.run() }
+                    FullButton("Continue · What is Ataraxia?", onClick = { next?.run() })
                     if (!onboarding) FullButton("Back home", onClick = { back?.run() }, secondary = true)
                 }
                 1 -> ScreenFrame("ATARAXIA", "Freedom from\nunnecessary disturbance.",
@@ -163,15 +163,15 @@ class AtaraxiaPhilosophyView @JvmOverloads constructor(
                     Thought("INTENTION", "Open with a purpose.")
                     Thought("MODERATION", "Enough is a complete experience.")
                     Thought("AGENCY", "The boundary belongs to you.")
-                    FullButton("Continue · Choose how to enter") { next?.run() }
+                    FullButton("Continue · Choose how to enter", onClick = { next?.run() })
                     FullButton("Back", onClick = { back?.run() }, secondary = true)
                 }
                 else -> ScreenFrame("CHOOSE WITH INTENTION", "What are you\nhere to do?",
                     "Both modes keep Reels and Explore blocked. Change modes and boundaries whenever you choose.") {
                     Thought("FOCUSED", "Messages only. The home feed stays unavailable.")
-                    FullButton("Begin in Focused mode") { focused?.run() }
+                    FullButton("Begin in Focused mode", onClick = { focused?.run() })
                     Thought("BALANCED", "Messages and a short following feed, contained by your limits.")
-                    FullButton("Begin in Balanced mode") { balanced?.run() }
+                    FullButton("Begin in Balanced mode", onClick = { balanced?.run() })
                     FullButton("Back", onClick = { back?.run() }, secondary = true)
                     Text("Ataraxia is free and has no developer ads or analytics. Meta still processes activity inside Instagram's website.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -211,7 +211,7 @@ class AtaraxiaEndView @JvmOverloads constructor(
                     Text("Notice the impulse to continue.\nYou do not have to obey it.", style = MaterialTheme.typography.headlineMedium)
                 }
             }
-            FullButton("Go to inbox") { inbox?.run() }
+            FullButton("Go to inbox", onClick = { inbox?.run() })
             FullButton("Return home", onClick = { home?.run() }, secondary = true)
             Text("The aim is not less life online. It is more life chosen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally))
         }
