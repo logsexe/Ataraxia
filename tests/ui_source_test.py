@@ -14,6 +14,8 @@ required = [
     "ProgressBar progress=",
     'section("CHOOSE AN INTENTION")',
     'actionTile("Messages"',
+    'addNav(nav,"Feed"',
+    'actionTile("Following feed"',
     'metricRow("POSTS"',
     "private void stepDots(int page)",
     "RippleDrawable",
@@ -28,6 +30,7 @@ for token in required:
 for forbidden in ["com.google.android.material", "androidx.compose", "LottieAnimationView"]:
     assert forbidden not in activity and forbidden not in build, f"Unexpected UI dependency: {forbidden}"
 
+assert '"Browse deliberately"' not in activity, "Feed navigation must use direct language"
 assert "implementation " not in build and "implementation(" not in build, "UI redesign must not add runtime dependencies"
 assert activity.count("setDuration(") <= 6, "Keep motion restrained rather than decorative"
 assert "INTERNET" not in activity, "Permissions belong only in the reviewed manifest"
