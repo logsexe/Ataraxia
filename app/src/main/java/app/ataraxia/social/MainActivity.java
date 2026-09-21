@@ -19,11 +19,14 @@ import java.util.*;
 /** Small, dependency-free Android pilot. All browsing happens in this app's WebView. */
 public class MainActivity extends Activity {
     private static final String BASE = "https://www.instagram.com";
-    private static final int BG = 0xff101916, CARD = 0xff1c2b24, INK = 0xffedf5ee, MUTED = 0xffa2b5a9, ACCENT = 0xffb9e5c8;
+    private static final int BG = 0xff0b1411, SURFACE = 0xff111e19, CARD = 0xff182721, CARD_ALT = 0xff20332a;
+    private static final int INK = 0xfff3f0e7, MUTED = 0xff9fb1a7, ACCENT = 0xffbce8c9, ACCENT_STRONG = 0xff7fd29b;
+    private static final int LINE = 0xff2d4137, DANGER = 0xffffb4a8;
     private SharedPreferences prefs;
     private WebView web;
-    private LinearLayout root, panel;
-    private TextView status;
+    private LinearLayout root, panel, nav;
+    private TextView status, modePill;
+    private final List<TextView> navItems = new ArrayList<>();
     private FrameLayout content;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean active, browsing, waitingSnapshot;
@@ -61,6 +64,7 @@ public class MainActivity extends Activity {
         super.onCreate(saved);
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
+        getWindow().setNavigationBarDividerColor(BG);
         prefs = getSharedPreferences("quiet-local", MODE_PRIVATE);
         rollDay();
         seen.addAll(prefs.getStringSet("seen", Collections.emptySet()));
@@ -71,26 +75,35 @@ public class MainActivity extends Activity {
             script = out.toString(StandardCharsets.UTF_8.name());
         } catch (IOException e) { throw new IllegalStateException("Missing bundled rules", e); }
         root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(BG);
-        root.setPadding(dp(14),dp(8),dp(14),dp(8));
+        root.setPadding(dp(20),dp(8),dp(20),dp(10));
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.ime());
-            v.setPadding(dp(14)+bars.left,dp(8)+bars.top,dp(14)+bars.right,dp(8)+bars.bottom);
+            v.setPadding(dp(20)+bars.left,dp(8)+bars.top,dp(20)+bars.right,dp(10)+bars.bottom);
             return insets;
         });
-        TextView title = text("ATARAXIA  /  PILOT", 15, ACCENT); title.setTypeface(null,Typeface.BOLD);
-        root.addView(title);
-        status = text(summary(),12,MUTED); root.addView(status);
+        LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(0,dp(4),0,dp(8));
+        LinearLayout brand=new LinearLayout(this);brand.setOrientation(LinearLayout.VERTICAL);
+        TextView title=text("ATARAXIA",15,INK);title.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
+        title.setLetterSpacing(.16f);title.setPadding(0,0,0,0);title.setContentDescription("Ataraxia");
+        TextView subtitle=text("SOCIAL MEDIA, IN MEASURE",10,MUTED);subtitle.setLetterSpacing(.12f);subtitle.setPadding(0,0,0,0);
+        brand.addView(title);brand.addView(subtitle);header.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
+        modePill=pill(focused()?"FOCUSED":"BALANCED");header.addView(modePill);
+        root.addView(header);
+        status=text(summary(),12,MUTED);status.setGravity(Gravity.CENTER);status.setPadding(dp(12),dp(8),dp(12),dp(8));
+        status.setBackground(surface(SURFACE,14,LINE,1));root.addView(status,new LinearLayout.LayoutParams(-1,-2));
         content = new FrameLayout(this);
         root.addView(content,new LinearLayout.LayoutParams(-1,0,1));
         web = new WebView(this); web.setBackgroundColor(BG);
         content.addView(web,new FrameLayout.LayoutParams(-1,-1));
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
-        panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(0,dp(30),0,dp(20));
+        panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(0,dp(28),0,dp(28));
         scroll.addView(panel); content.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
         panel.setTag(scroll);
-        LinearLayout nav = new LinearLayout(this);
+        nav = new LinearLayout(this);nav.setPadding(dp(5),dp(5),dp(5),dp(5));nav.setBackground(surface(SURFACE,22,LINE,1));
+        nav.setElevation(dp(8));
         addNav(nav,"Home",()->showHome()); addNav(nav,"Inbox",()->navigate(BASE+"/direct/inbox/"));
-        addNav(nav,"Browse",()->{if(focused())visitProfile();else openFeed();}); addNav(nav,"Settings",()->settings()); root.addView(nav);
+        addNav(nav,"Browse",()->{if(focused())visitProfile();else openFeed();}); addNav(nav,"Settings",()->settings());
+        LinearLayout.LayoutParams navParams=new LinearLayout.LayoutParams(-1,dp(64));navParams.topMargin=dp(8);root.addView(nav,navParams);
         setContentView(root);
         configureWeb();
         if (prefs.getBoolean("philosophyIntro",false)) showHome();
@@ -205,7 +218,9 @@ public class MainActivity extends Activity {
         rollDay(); refreshSession();
         if (!allowNavigation(url)) return;
         browsing=true; ((View)panel.getTag()).setVisibility(View.GONE);
-        web.setVisibility(View.VISIBLE); web.onResume(); lastTick=SystemClock.elapsedRealtime(); web.loadUrl(url);
+        selectNav(Policy.exempt(url)?"Inbox":"Browse");
+        web.setAlpha(0f);web.setVisibility(View.VISIBLE);web.onResume();lastTick=SystemClock.elapsedRealtime();web.loadUrl(url);
+        web.animate().alpha(1f).setDuration(180).start();
     }
     private boolean focused() { return prefs.getBoolean("focused",true); }
     private void rejectRoute() {
@@ -263,26 +278,42 @@ public class MainActivity extends Activity {
         generation++; browsing=false; waitingSnapshot=false;
         web.setVisibility(View.GONE); web.onPause();
         ((View)panel.getTag()).setVisibility(View.VISIBLE); panel.removeAllViews();
+        panel.animate().cancel();panel.setAlpha(0f);panel.setTranslationY(dp(10));
+        panel.post(()->panel.animate().alpha(1f).translationY(0f).setDuration(220).start());
+        updateModePill();
     }
     private void showHome() {
-        basePanel();
-        panel.addView(text("Your attention.\nYour choice.",34,INK));
-        panel.addView(text(focused()?"Focused · Messages and deliberate profile visits.":"Balanced · Messages and a short, capped feed.",17,MUTED));
-        space(); card("INBOX FIRST","Messages remain available after your browsing limit. No background message notifications in this pilot.");
-        button(panel,"Open Instagram inbox",()->navigate(BASE+"/direct/inbox/"));
-        if (!focused()) button(panel,"Browse a little",()->openFeed());
-        button(panel,"Visit a profile",()->visitProfile());
-        button(panel,"Saved profiles ("+savedProfiles().size()+")",()->showSavedProfiles());
-        button(panel,"Change mode",()->chooseMode());
-        button(panel,"Why Ataraxia?",()->showPhilosophy(0,false));
-        space(); card("YOUR BOUNDARIES",prefs.getInt("postLimit",10)+" posts per session\n"+prefs.getInt("sessionMinutes",5)+" minutes per session\n"+prefs.getInt("dailyMinutes",15)+" minutes browsing per day\n10-minute break between capped sessions");
-        panel.addView(text("Reels + Explore blocked · Sponsored posts filtered where detected\n\nInstagram still processes your account activity. Filtering can miss ads and recommendations. Limits apply only here.",13,MUTED));
+        basePanel();selectNav("Home");
+        eyebrow("YOUR SPACE");
+        heading("Your attention.\nYour choice.");
+        panel.addView(text(focused()?"Focused mode keeps the feed out of sight. Choose a person or conversation.":"Balanced mode gives the feed a clear ending, chosen by you.",16,MUTED));
+        space();
+        LinearLayout today=container(CARD_ALT,24,ACCENT_STRONG,1);today.setPadding(dp(20),dp(18),dp(20),dp(18));
+        TextView todayLabel=text("TODAY",11,ACCENT);todayLabel.setLetterSpacing(.14f);today.addView(todayLabel);
+        TextView remaining=text(summary(),18,INK);remaining.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));today.addView(remaining);
+        int daily=prefs.getInt("dailyMinutes",15);long used=prefs.getLong("dailyMs",0);
+        ProgressBar progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(Math.max(1,daily*60));progress.setProgress((int)Math.min(daily*60,used/1000));
+        progress.setProgressTintList(android.content.res.ColorStateList.valueOf(ACCENT_STRONG));
+        progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(LINE));
+        today.addView(progress,new LinearLayout.LayoutParams(-1,dp(5)));panel.addView(today);space();
+        section("CHOOSE AN INTENTION");
+        actionTile("Messages","Open your inbox without spending your feed allowance.","Open inbox",()->navigate(BASE+"/direct/inbox/"));
+        if(!focused()) actionTile("A finite feed",prefs.getInt("postLimit",10)+" posts or "+prefs.getInt("sessionMinutes",5)+" minutes—whichever comes first.","Browse deliberately",()->openFeed());
+        actionTile("Someone specific","Go directly to a profile you chose.","Visit a profile",()->visitProfile());
+        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);
+        secondaryButton(row,"Saved · "+savedProfiles().size(),()->showSavedProfiles());
+        secondaryButton(row,"Change mode",()->chooseMode());panel.addView(row);
+        space();section("YOUR BOUNDARIES");
+        metricRow("POSTS",String.valueOf(prefs.getInt("postLimit",10)),"PER SESSION",prefs.getInt("sessionMinutes",5)+" MIN","PER DAY",prefs.getInt("dailyMinutes",15)+" MIN");
+        secondaryButton(panel,"Why Ataraxia?",()->showPhilosophy(0,false));
+        panel.addView(text("Reels and Explore are blocked. Sponsored content is filtered when detected. Instagram still processes activity and filtering can miss content.",12,MUTED));
     }
     private void showPhilosophy(int page,boolean onboarding) {
-        basePanel();
+        basePanel();selectNav("Home");stepDots(page);
         if(page==0) {
-            panel.addView(text("About 4,000 weeks.",13,ACCENT));
-            panel.addView(text("Time is the one thing\nyou cannot replace.",34,INK));
+            eyebrow("ABOUT 4,000 WEEKS");
+            heading("Time is the one thing\nyou cannot replace.");
             panel.addView(text("An 80-year life is roughly 4,174 weeks. The point is not to fear that number. It is to remember that attention is how life is spent.",17,MUTED));
             space();
             card("A FINITE LIFE","Infinite feeds behave as though your time has no edge. Your life does. Ataraxia makes the boundary visible.");
@@ -292,8 +323,8 @@ public class MainActivity extends Activity {
             return;
         }
         if(page==1) {
-            panel.addView(text("Ataraxia",13,ACCENT));
-            panel.addView(text("Freedom from\nunnecessary disturbance.",34,INK));
+            eyebrow("ATARAXIA");
+            heading("Freedom from\nunnecessary disturbance.");
             panel.addView(text("The ancient Greek ideal was not numbness or withdrawal. It was a steadier mind—less governed by noise, impulse and manufactured urgency.",17,MUTED));
             space();
             card("ATTENTION","Notice what is asking for your mind before giving it away.");
@@ -304,8 +335,8 @@ public class MainActivity extends Activity {
             button(panel,"Back",()->showPhilosophy(0,onboarding));
             return;
         }
-        panel.addView(text("Choose with intention.",13,ACCENT));
-        panel.addView(text("What are you here to do?",34,INK));
+        eyebrow("CHOOSE WITH INTENTION");
+        heading("What are you here to do?");
         panel.addView(text("Both modes keep Reels and Explore blocked. You can change modes and boundaries whenever you choose.",17,MUTED));
         space();
         card("FOCUSED","Messages and deliberate profile visits. The home feed stays unavailable.");
@@ -324,13 +355,14 @@ public class MainActivity extends Activity {
     }
     private void showLimit() {
         if(prefs.getLong("cooldown",0)==0) prefs.edit().putLong("cooldown",System.currentTimeMillis()+10*60000L).apply();
-        basePanel(); panel.addView(text("Enough for now.",34,INK));
+        basePanel();selectNav("Home");eyebrow("A DELIBERATE END");heading("Enough for now.");
         boolean daily=prefs.getLong("dailyMs",0)>=prefs.getInt("dailyMinutes",15)*60000L;
         panel.addView(text(daily?"You've used today's browsing allowance. Your inbox is still available.":"You've reached your session boundary. Take a 10-minute break; reopening the app won't reset it.",18,MUTED));
         space(); button(panel,"Go to inbox",()->navigate(BASE+"/direct/inbox/")); button(panel,"Back home",()->showHome());
     }
     private void showError(String message) { basePanel(); panel.addView(text("Connection paused",28,INK)); panel.addView(text(message,17,MUTED)); button(panel,"Try inbox again",()->navigate(BASE+"/direct/inbox/")); }
     private void settings() {
+        selectNav("Settings");
         new AlertDialog.Builder(this).setTitle("Your boundaries").setItems(new String[]{"Posts per session","Minutes per session","Daily browsing minutes","Privacy and limitations","Clear Instagram login","Refresh current page","Filter status","Focused / Balanced mode","Export settings","Import settings","Philosophy and purpose"},(d,which)->{
             if(which==0) choose("postLimit","Posts per session",new int[]{5,10,15,20});
             if(which==1) choose("sessionMinutes","Minutes per session",new int[]{2,5,10});
@@ -496,11 +528,25 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle(title).setItems(labels,(d,n)->{prefs.edit().putInt(key,values[n]).apply();showHome();}).show();
     }
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
-    private TextView text(String s,int size,int color){ TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);t.setPadding(0,dp(6),0,dp(10));return t; }
-    private void space(){ Space s=new Space(this);panel.addView(s,new LinearLayout.LayoutParams(1,dp(18))); }
-    private void card(String title,String body){ LinearLayout c=new LinearLayout(this);c.setOrientation(1);c.setPadding(dp(18),dp(12),dp(18),dp(12));GradientDrawable bg=new GradientDrawable();bg.setColor(CARD);bg.setCornerRadius(dp(18));c.setBackground(bg);c.addView(text(title,12,ACCENT));c.addView(text(body,16,INK));panel.addView(c);space(); }
-    private void button(LinearLayout parent,String label,Runnable action){Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextColor(BG);b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(ACCENT));b.setOnClickListener(v->action.run());parent.addView(b,new LinearLayout.LayoutParams(-1,dp(54)));}
-    private void addNav(LinearLayout nav,String label,Runnable action){Button b=new Button(this);b.setText(label);b.setTextSize(12);b.setAllCaps(false);b.setPadding(0,0,0,0);b.setTextColor(INK);b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(CARD));b.setOnClickListener(v->action.run());nav.addView(b,new LinearLayout.LayoutParams(0,dp(52),1));}
+    private GradientDrawable surface(int color,int radius,int strokeColor,int strokeWidth){GradientDrawable g=new GradientDrawable();g.setColor(color);g.setCornerRadius(dp(radius));if(strokeWidth>0)g.setStroke(dp(strokeWidth),strokeColor);return g;}
+    private android.graphics.drawable.Drawable ripple(int color,GradientDrawable shape){return new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(color),shape,null);}
+    private LinearLayout container(int color,int radius,int strokeColor,int strokeWidth){LinearLayout v=new LinearLayout(this);v.setOrientation(LinearLayout.VERTICAL);v.setBackground(surface(color,radius,strokeColor,strokeWidth));v.setElevation(dp(2));return v;}
+    private TextView text(String s,int size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);t.setLineSpacing(0,1.12f);t.setFontFeatureSettings("kern");t.setPadding(0,dp(5),0,dp(9));return t;}
+    private TextView pill(String label){TextView t=text(label,10,ACCENT);t.setGravity(Gravity.CENTER);t.setLetterSpacing(.12f);t.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));t.setPadding(dp(12),dp(7),dp(12),dp(7));t.setBackground(surface(CARD_ALT,20,LINE,1));return t;}
+    private void updateModePill(){if(modePill!=null)modePill.setText(focused()?"FOCUSED":"BALANCED");}
+    private void eyebrow(String label){TextView t=text(label,11,ACCENT);t.setLetterSpacing(.16f);t.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));panel.addView(t);}
+    private void heading(String label){TextView t=text(label,36,INK);t.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));t.setLineSpacing(dp(2),1.0f);t.setAccessibilityHeading(true);panel.addView(t);}
+    private void section(String label){TextView t=text(label,11,MUTED);t.setLetterSpacing(.14f);t.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));t.setPadding(0,dp(5),0,dp(12));panel.addView(t);}
+    private void space(){Space s=new Space(this);panel.addView(s,new LinearLayout.LayoutParams(1,dp(18)));}
+    private void card(String title,String body){LinearLayout box=container(CARD,22,LINE,1);box.setPadding(dp(20),dp(16),dp(20),dp(14));TextView h=text(title,11,ACCENT);h.setLetterSpacing(.13f);h.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));box.addView(h);box.addView(text(body,16,INK));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(14);panel.addView(box,p);}
+    private void actionTile(String title,String body,String action,Runnable run){LinearLayout box=container(CARD,24,LINE,1);box.setPadding(dp(20),dp(16),dp(20),dp(14));TextView h=text(title,20,INK);h.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));box.addView(h);box.addView(text(body,14,MUTED));TextView a=text(action+"  →",14,ACCENT);a.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));box.addView(a);box.setClickable(true);box.setFocusable(true);box.setForeground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x227fd29b),null,null));box.setOnClickListener(v->run.run());LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(12);panel.addView(box,p);}
+    private void metricRow(String a,String av,String b,String bv,String d,String dv){LinearLayout row=new LinearLayout(this);row.setWeightSum(3);metric(row,a,av);metric(row,b,bv);metric(row,d,dv);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(14);panel.addView(row,p);}
+    private void metric(LinearLayout row,String label,String value){LinearLayout box=container(SURFACE,18,LINE,1);box.setPadding(dp(8),dp(12),dp(8),dp(10));TextView v=text(value,17,INK);v.setGravity(Gravity.CENTER);v.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));box.addView(v);TextView l=text(label,9,MUTED);l.setGravity(Gravity.CENTER);l.setLetterSpacing(.08f);box.addView(l);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);p.setMargins(dp(3),0,dp(3),0);row.addView(box,p);}
+    private void stepDots(int page){LinearLayout dots=new LinearLayout(this);dots.setGravity(Gravity.CENTER);for(int i=0;i<3;i++){View dot=new View(this);dot.setBackground(surface(i==page?ACCENT_STRONG:LINE,8,0,0));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(dp(i==page?28:8),dp(8));p.setMargins(dp(4),0,dp(4),dp(18));dots.addView(dot,p);}panel.addView(dots);}
+    private void button(LinearLayout parent,String label,Runnable action){TextView b=text(label,15,BG);b.setGravity(Gravity.CENTER);b.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));b.setPadding(dp(18),0,dp(18),0);b.setBackground(ripple(0x33000000,surface(ACCENT,18,0,0)));b.setClickable(true);b.setFocusable(true);b.setOnClickListener(v->{v.animate().scaleX(.98f).scaleY(.98f).setDuration(70).withEndAction(()->{v.animate().scaleX(1f).scaleY(1f).setDuration(110).start();action.run();}).start();});LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(56));p.bottomMargin=dp(10);parent.addView(b,p);}
+    private void secondaryButton(LinearLayout parent,String label,Runnable action){TextView b=text(label,14,INK);b.setGravity(Gravity.CENTER);b.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));b.setBackground(ripple(0x227fd29b,surface(SURFACE,17,LINE,1)));b.setClickable(true);b.setFocusable(true);b.setOnClickListener(v->action.run());LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(parent==panel?-1:0,dp(52),parent==panel?0:1);p.setMargins(dp(3),0,dp(3),dp(10));parent.addView(b,p);}
+    private void addNav(LinearLayout parent,String label,Runnable action){TextView b=text(label,11,MUTED);b.setGravity(Gravity.CENTER);b.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));b.setPadding(0,0,0,0);b.setTag(label);b.setClickable(true);b.setFocusable(true);b.setOnClickListener(v->action.run());navItems.add(b);parent.addView(b,new LinearLayout.LayoutParams(0,-1,1));}
+    private void selectNav(String label){for(TextView item:navItems){boolean selected=label.equals(item.getTag());item.setTextColor(selected?ACCENT: MUTED);item.setBackground(selected?surface(CARD_ALT,17,LINE,1):null);item.setSelected(selected);}}
     @Override protected void onResume(){super.onResume();active=true;lastTick=SystemClock.elapsedRealtime();if(web!=null && browsing)web.onResume();handler.post(ticker);}
     @Override protected void onPause(){active=false;handler.removeCallbacks(ticker);if(web!=null)web.onPause();super.onPause();}
     @Override public void onBackPressed(){
