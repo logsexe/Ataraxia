@@ -3,6 +3,7 @@ package app.ataraxia.social
 import android.content.Context
 import android.util.AttributeSet
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -69,7 +70,7 @@ private fun ValueCard(label: String, value: String, icon: ImageVector, onClick: 
                 Text(label, style = MaterialTheme.typography.titleLarge)
                 Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Icon(Icons.Filled.ChevronRight, "Change $label", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Filled.ArrowForward, "Change $label", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -98,20 +99,20 @@ class AtaraxiaSettingsView @JvmOverloads constructor(
             "YOUR PRACTICE", "Boundaries,\nchosen by you.",
             "Adjust the edges of the experience. Ataraxia supports your intention without pretending to control you."
         ) {
-            ValueCard("Mode", if (focused) "Focused · inbox only" else "Balanced · following feed included", Icons.Filled.Tune) { actions.getOrNull(3)?.run() }
+            ValueCard("Mode", if (focused) "Focused · inbox only" else "Balanced · following feed included", Icons.Filled.Settings) { actions.getOrNull(3)?.run() }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Metric("POSTS", "$posts", Modifier.weight(1f))
                 Metric("SESSION", "$session min", Modifier.weight(1f))
                 Metric("DAILY", "$daily min", Modifier.weight(1f))
             }
-            ValueCard("Posts per session", "$posts posts", Icons.Filled.ViewStream) { actions.getOrNull(0)?.run() }
-            ValueCard("Session length", "$session minutes", Icons.Filled.HourglassBottom) { actions.getOrNull(1)?.run() }
-            ValueCard("Daily allowance", "$daily minutes", Icons.Filled.WbTwilight) { actions.getOrNull(2)?.run() }
+            ValueCard("Posts per session", "$posts posts", Icons.Filled.List) { actions.getOrNull(0)?.run() }
+            ValueCard("Session length", "$session minutes", Icons.Filled.Email) { actions.getOrNull(1)?.run() }
+            ValueCard("Daily allowance", "$daily minutes", Icons.Filled.Home) { actions.getOrNull(2)?.run() }
             Text("PRIVACY & PORTABILITY", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
-            ValueCard("Privacy and limitations", "What Ataraxia can—and cannot—protect", Icons.Filled.Shield) { actions.getOrNull(4)?.run() }
-            ValueCard("Clear Instagram login", "Remove cookies, website storage and cache", Icons.Filled.Logout) { actions.getOrNull(5)?.run() }
-            ValueCard("Export settings", "Readable file; login and history excluded", Icons.Filled.UploadFile) { actions.getOrNull(6)?.run() }
-            ValueCard("Import settings", "Review before replacing boundaries", Icons.Filled.Download) { actions.getOrNull(7)?.run() }
+            ValueCard("Privacy and limitations", "What Ataraxia can—and cannot—protect", Icons.Filled.Info) { actions.getOrNull(4)?.run() }
+            ValueCard("Clear Instagram login", "Remove cookies, website storage and cache", Icons.Filled.Delete) { actions.getOrNull(5)?.run() }
+            ValueCard("Export settings", "Readable file; login and history excluded", Icons.Filled.Share) { actions.getOrNull(6)?.run() }
+            ValueCard("Import settings", "Review before replacing boundaries", Icons.Filled.Refresh) { actions.getOrNull(7)?.run() }
             TextButton(onClick = { actions.getOrNull(8)?.run() }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                 Text("Philosophy and purpose")
             }
@@ -154,7 +155,7 @@ class AtaraxiaPhilosophyView @JvmOverloads constructor(
                     Thought("A FINITE LIFE", "Infinite feeds behave as though your time has no edge. Your life does.")
                     Thought("THE AIM", "Connect, create and respond—then return to the life beyond the screen.")
                     FullButton("Continue · What is Ataraxia?") { next?.run() }
-                    if (!onboarding) FullButton("Back home", { back?.run() }, true)
+                    if (!onboarding) FullButton("Back home", onClick = { back?.run() }, secondary = true)
                 }
                 1 -> ScreenFrame("ATARAXIA", "Freedom from\nunnecessary disturbance.",
                     "The ancient Greek ideal was not withdrawal. It was a steadier mind—less governed by noise, impulse and manufactured urgency.") {
@@ -163,7 +164,7 @@ class AtaraxiaPhilosophyView @JvmOverloads constructor(
                     Thought("MODERATION", "Enough is a complete experience.")
                     Thought("AGENCY", "The boundary belongs to you.")
                     FullButton("Continue · Choose how to enter") { next?.run() }
-                    FullButton("Back", { back?.run() }, true)
+                    FullButton("Back", onClick = { back?.run() }, secondary = true)
                 }
                 else -> ScreenFrame("CHOOSE WITH INTENTION", "What are you\nhere to do?",
                     "Both modes keep Reels and Explore blocked. Change modes and boundaries whenever you choose.") {
@@ -171,7 +172,7 @@ class AtaraxiaPhilosophyView @JvmOverloads constructor(
                     FullButton("Begin in Focused mode") { focused?.run() }
                     Thought("BALANCED", "Messages and a short following feed, contained by your limits.")
                     FullButton("Begin in Balanced mode") { balanced?.run() }
-                    FullButton("Back", { back?.run() }, true)
+                    FullButton("Back", onClick = { back?.run() }, secondary = true)
                     Text("Ataraxia is free and has no developer ads or analytics. Meta still processes activity inside Instagram's website.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -205,13 +206,13 @@ class AtaraxiaEndView @JvmOverloads constructor(
         ) {
             Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.large) {
                 Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Filled.SelfImprovement, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Filled.CheckCircle, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(14.dp))
                     Text("Notice the impulse to continue.\nYou do not have to obey it.", style = MaterialTheme.typography.headlineMedium)
                 }
             }
             FullButton("Go to inbox") { inbox?.run() }
-            FullButton("Return home", { home?.run() }, true)
+            FullButton("Return home", onClick = { home?.run() }, secondary = true)
             Text("The aim is not less life online. It is more life chosen.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally))
         }
     }
