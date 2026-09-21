@@ -3,8 +3,9 @@ from pathlib import Path
 import json,re,xml.etree.ElementTree as ET
 root=Path(__file__).resolve().parents[1]
 ns='{http://schemas.android.com/apk/res/android}'
+tools_ns='{http://schemas.android.com/tools}'
 manifest=ET.parse(root/'app/src/main/AndroidManifest.xml').getroot()
-permissions=sorted(n.attrib[ns+'name'] for n in manifest.findall('uses-permission'))
+permissions=sorted(n.attrib[ns+'name'] for n in manifest.findall('uses-permission') if n.attrib.get(tools_ns+'node')!='remove')
 assert permissions==['android.permission.INTERNET'],permissions
 app=manifest.find('application')
 assert app.attrib.get(ns+'allowBackup')=='false'
