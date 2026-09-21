@@ -23,7 +23,7 @@ run(jdk/'bin/javac','-encoding','UTF-8','-source','17','-target','17','-classpat
 run(jdk/'bin/jar','--create','--file',build/'classes.jar','-C',build/'classes','.')
 run(bt/'d8','--release','--min-api','30','--lib',android,'--output',build/'dex',build/'classes.jar')
 run(bt/'aapt2','compile','--dir',root/'app/src/main/res','-o',build/'resources.zip')
-run(bt/'aapt2','link','-o',build/'unsigned.apk','-I',android,'--manifest',build/'AndroidManifest.xml','--min-sdk-version','30','--target-sdk-version','35','--version-code','7','--version-name','0.1.6-preview','-A',root/'app/src/main/assets',build/'resources.zip')
+run(bt/'aapt2','link','-o',build/'unsigned.apk','-I',android,'--manifest',build/'AndroidManifest.xml','--min-sdk-version','30','--target-sdk-version','35','--version-code','8','--version-name','0.1.7-preview','-A',root/'app/src/main/assets',build/'resources.zip')
 with zipfile.ZipFile(build/'unsigned.apk','a') as z:
  for dex in (build/'dex').glob('*.dex'):z.write(dex,dex.name)
 run(bt/'zipalign','-f','-p','4',build/'unsigned.apk',build/'aligned.apk')
