@@ -23,15 +23,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Privacy and philosophy regression checks
+        run: |
+          python3 tools/privacy_check.py
+          python3 tests/philosophy_source_test.py
       - name: Test policy and session limits
         run: |
           mkdir -p build/tests
           javac -d build/tests \
             app/src/main/java/app/ataraxia/social/Policy.java \
             app/src/main/java/app/ataraxia/social/Budget.java \
-            tests/PolicyTest.java tests/BudgetTest.java
+            app/src/main/java/app/ataraxia/social/SettingsBackup.java \
+            tests/PolicyTest.java tests/BudgetTest.java tests/SettingsBackupTest.java
           java -cp build/tests PolicyTest
           java -cp build/tests BudgetTest
+          java -cp build/tests SettingsBackupTest
       - name: Test feed filters and fast scrolling
         run: |
           node --check app/src/main/assets/filter.js
@@ -39,57 +45,42 @@ jobs:
           npm install --no-save --package-lock=false playwright@1.56.1
           npx playwright install --with-deps chromium
           node tests/filter.test.cjs
+      - name: Missing persistent signing must fail closed
+        run: |
+          mkdir -p build
+          if ./gradlew --no-daemon :app:preReleaseBuild > build/signing-guard.log 2>&1; then
+            echo 'Release unexpectedly accepted missing signing configuration'
+            exit 1
+          fi
+          python3 - <<'PYTEST'
+          from pathlib import Path
+          assert 'Release signing is not configured' in Path('build/signing-guard.log').read_text()
+          PYTEST
       - name: Build non-debuggable pilot APK
         run: ./gradlew --no-daemon :app:assembleDebug
       - name: Verify APK signature, identity and permissions
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Ataraxia-0.1.1-pilot.apk
+          cp build/privacy-review.json dist/privacy-review.json
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Ataraxia-0.1.7-preview.apk
           sdk_tools="$ANDROID_HOME/build-tools/35.0.0"
-          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Ataraxia-0.1.1-pilot.apk > dist/SIGNATURE.txt
-          "$sdk_tools/zipalign" -c -p 4 dist/Ataraxia-0.1.1-pilot.apk
-          "$sdk_tools/aapt" dump badging dist/Ataraxia-0.1.1-pilot.apk > dist/manifest.txt
+          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Ataraxia-0.1.7-preview.apk > dist/SIGNATURE.txt
+          "$sdk_tools/zipalign" -c -p 4 dist/Ataraxia-0.1.7-preview.apk
+          "$sdk_tools/aapt" dump badging dist/Ataraxia-0.1.7-preview.apk > dist/manifest.txt
           python3 - <<'PY'
           from pathlib import Path
           text = Path('dist/manifest.txt').read_text()
-          assert "package: name='app.ataraxia.social' versionCode='2' versionName='0.1.1-pilot'" in text
+          assert "package: name='app.ataraxia.social' versionCode='8' versionName='0.1.7-preview'" in text
           permissions = [line for line in text.splitlines() if line.startswith('uses-permission:')]
           assert permissions == ["uses-permission: name='android.permission.INTERNET'"], permissions
           assert 'application-debuggable' not in text
           print('Verified identity, version, Internet-only permissions and non-debuggable manifest')
           PY
           cd dist
-          sha256sum Ataraxia-0.1.1-pilot.apk > SHA256SUMS.txt
+          sha256sum Ataraxia-0.1.7-preview.apk > SHA256SUMS.txt
       - name: Upload verified pilot APK
         uses: actions/upload-artifact@v4
         with:
-          name: Ataraxia-0.1.1-pilot
+          name: Ataraxia-0.1.7-preview
           path: dist/*
           if-no-files-found: error
-  release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: Ataraxia-0.1.1-pilot
-          path: dist
-      - name: Publish immutable pilot prerelease
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view v0.1.1-pilot >/dev/null 2>&1; then
-            echo 'This version is already published; leaving its assets unchanged.'
-            exit 0
-          fi
-          gh release create v0.1.1-pilot \
-            --target "$GITHUB_SHA" \
-            --title 'Ataraxia v0.1.1 — fast-scroll fixes' \
-            --notes-file docs/RELEASE-0.1.1.md \
-            --prerelease \
-            dist/Ataraxia-0.1.1-pilot.apk dist/SHA256SUMS.txt dist/SIGNATURE.txt

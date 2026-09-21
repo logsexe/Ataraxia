@@ -1,4 +1,6 @@
 plugins { id 'com.android.application' }
+def signingNames = ['ATARAXIA_KEYSTORE', 'ATARAXIA_STORE_PASSWORD', 'ATARAXIA_KEY_ALIAS', 'ATARAXIA_KEY_PASSWORD']
+def signingReady = signingNames.every { System.getenv(it) }
 android {
     namespace 'app.ataraxia.social'
     compileSdk 35
@@ -6,9 +8,35 @@ android {
         applicationId 'app.ataraxia.social'
         minSdk 30
         targetSdk 35
-        versionCode 2
-        versionName '0.1.1-pilot'
+        versionCode 8
+        versionName '0.1.7-preview'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    buildTypes { debug { debuggable false }; release { minifyEnabled false } }
+    signingConfigs {
+        if (signingReady) {
+            persistent {
+                storeFile file(System.getenv('ATARAXIA_KEYSTORE'))
+                storePassword System.getenv('ATARAXIA_STORE_PASSWORD')
+                keyAlias System.getenv('ATARAXIA_KEY_ALIAS')
+                keyPassword System.getenv('ATARAXIA_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        debug { debuggable false }
+        release {
+            debuggable false
+            minifyEnabled false
+            if (signingReady) signingConfig signingConfigs.persistent
+        }
+    }
+}
+
+// Never silently produce an unsigned or test-key release.
+tasks.configureEach { task ->
+    if (task.name == 'preReleaseBuild') {
+        task.doFirst {
+            if (!signingReady) throw new GradleException('Release signing is not configured. Set the four ATARAXIA signing environment variables; never commit credentials.')
+        }
+    }
 }

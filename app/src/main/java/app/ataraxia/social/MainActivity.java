@@ -30,18 +30,20 @@ public class MainActivity extends Activity {
     private long lastTick;
     private String script;
     private ValueCallback<Uri[]> fileCallback;
+    private final java.util.concurrent.ExecutorService backupIO=java.util.concurrent.Executors.newSingleThreadExecutor();
     private final Set<String> seen = new HashSet<>();
-    private int generation;
+    private int generation, sessionGeneration;
     private final Runnable ticker = new Runnable() {
         public void run() {
             if (!active) return;
             rollDay();
+            refreshSession();
             long now = SystemClock.elapsedRealtime();
             long delta = Math.min(5000, Math.max(0, now - lastTick));
             lastTick = now;
             String url = web.getUrl();
             if (browsing && Policy.internal(url)) {
-                if (Policy.blocked(url)) { rejectRoute(); }
+                if (Policy.blocked(url,focused())) { rejectRoute(); }
                 else if (!Policy.exempt(url)) {
                     prefs.edit().putLong("dailyMs", prefs.getLong("dailyMs",0) + delta)
                         .putLong("sessionMs", prefs.getLong("sessionMs",0) + delta).apply();
@@ -49,7 +51,8 @@ public class MainActivity extends Activity {
                 }
                 if (browsing && !waitingSnapshot && Policy.feed(url)) pollPosts();
             }
-            status.setText(summary());
+            String nextSummary = summary();
+            if (!nextSummary.contentEquals(status.getText())) status.setText(nextSummary);
             handler.postDelayed(this, 1000);
         }
     };
@@ -87,13 +90,11 @@ public class MainActivity extends Activity {
         panel.setTag(scroll);
         LinearLayout nav = new LinearLayout(this);
         addNav(nav,"Home",()->showHome()); addNav(nav,"Inbox",()->navigate(BASE+"/direct/inbox/"));
-        addNav(nav,"Feed",()->openFeed()); addNav(nav,"Settings",()->settings()); root.addView(nav);
+        addNav(nav,"Browse",()->{if(focused())visitProfile();else openFeed();}); addNav(nav,"Settings",()->settings()); root.addView(nav);
         setContentView(root);
         configureWeb();
-        showHome();
-        if (!prefs.getBoolean("intro",false)) new AlertDialog.Builder(this).setTitle("A quieter way in")
-            .setMessage("Ataraxia displays Instagram's website with local filters. Meta still receives your activity.\n\nReels and Explore routes are blocked. Feed limits are voluntary. Sponsored-post filtering is best effort and can break when Instagram changes.\n\nNo admin, Accessibility, VPN or contacts permissions. No analytics. Calls and background notifications are not supported in this pilot.")
-            .setPositiveButton("Continue",(d,w)->prefs.edit().putBoolean("intro",true).apply()).show();
+        if (prefs.getBoolean("philosophyIntro",false)) showHome();
+        else showPhilosophy(0,true);
     }
     private void configureWeb() {
         WebSettings s = web.getSettings();
@@ -114,14 +115,14 @@ public class MainActivity extends Activity {
             @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon) {
                 generation++; waitingSnapshot=false;
                 if (!Policy.internal(url)) { web.stopLoading(); showHome(); return; }
-                if (Policy.blocked(url)) { rejectRoute(); return; }
+                if (Policy.blocked(url,focused())) { rejectRoute(); return; }
                 if (!Policy.exempt(url) && limited()) { web.stopLoading(); showLimit(); return; }
                 if (browsing) web.setVisibility(View.INVISIBLE);
             }
             @Override public void onPageFinished(WebView view,String url) {
-                if (!browsing || !Policy.internal(url) || Policy.blocked(url)) return;
+                if (!browsing || !Policy.internal(url) || Policy.blocked(url,focused())) return;
                 final int page = generation;
-                String configuredScript = script + "\nwindow.__ataraxiaStillness && window.__ataraxiaStillness.configure({limit:"
+                String configuredScript = script + "\nwindow.__ataraxiaStillness && window.__ataraxiaStillness.configure({focused:" + focused() + ",limit:"
                     + prefs.getInt("postLimit",10) + ",ids:" + new JSONArray(new ArrayList<>(seen)).toString() + "});";
                 web.evaluateJavascript(configuredScript, value -> {
                     if (browsing && page==generation) web.setVisibility(View.VISIBLE);
@@ -167,6 +168,11 @@ public class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
+        if(request==43 || request==44) {
+            if(result==RESULT_OK && data!=null && data.getData()!=null && "content".equals(data.getData().getScheme()))
+                transferSettings(request==43,data.getData());
+            return;
+        }
         if (request==42 && fileCallback!=null) {
             List<Uri> chosen=new ArrayList<>();
             if (result==RESULT_OK && data!=null && Policy.internal(web.getUrl())) {
@@ -180,7 +186,7 @@ public class MainActivity extends Activity {
     }
     private boolean allowNavigation(String url) {
         if (Policy.internal(url)) {
-            if (Policy.blocked(url)) { rejectRoute(); return false; }
+            if (Policy.blocked(url,focused())) { rejectRoute(); return false; }
             if (!Policy.exempt(url) && limited()) { showLimit(); return false; }
             return true;
         }
@@ -201,15 +207,16 @@ public class MainActivity extends Activity {
         browsing=true; ((View)panel.getTag()).setVisibility(View.GONE);
         web.setVisibility(View.VISIBLE); web.onResume(); lastTick=SystemClock.elapsedRealtime(); web.loadUrl(url);
     }
+    private boolean focused() { return prefs.getBoolean("focused",true); }
     private void rejectRoute() {
-        web.stopLoading(); showHome(); Toast.makeText(this,"Reels and Explore are switched off.",Toast.LENGTH_SHORT).show();
+        web.stopLoading(); showHome(); Toast.makeText(this,focused()?"Focused mode: home feed, Reels and Explore are off.":"Reels and Explore are switched off.",Toast.LENGTH_SHORT).show();
     }
-    private void openFeed() { refreshSession(); if(limited()) showLimit(); else navigate(BASE+"/"); }
+    private void openFeed() { if(focused()){rejectRoute();return;} refreshSession(); if(limited()) showLimit(); else navigate(BASE+"/"); }
     private void pollPosts() {
-        waitingSnapshot=true; final int page=generation;
+        waitingSnapshot=true; final int page=generation, session=sessionGeneration;
         web.evaluateJavascript("JSON.stringify(window.__ataraxiaStillness ? window.__ataraxiaStillness.snapshot() : null)",raw->{
             waitingSnapshot=false;
-            if(!browsing || page!=generation || !Policy.internal(web.getUrl()) || !Policy.feed(web.getUrl())) return;
+            if(!browsing || page!=generation || session!=sessionGeneration || !Policy.internal(web.getUrl()) || !Policy.feed(web.getUrl())) return;
             try {
                 Object parsed=new JSONTokener(raw).nextValue();
                 if(!(parsed instanceof String)) return;
@@ -217,7 +224,8 @@ public class MainActivity extends Activity {
                 if(ids!=null) for(int i=0;i<Math.min(ids.length(),500);i++) {
                     String id=ids.optString(i); if(id.matches("[A-Za-z0-9_-]{1,80}")) seen.add(id);
                 }
-                prefs.edit().putStringSet("seen",new HashSet<>(seen)).apply();
+                if (!seen.equals(prefs.getStringSet("seen",Collections.emptySet())))
+                    prefs.edit().putStringSet("seen",new HashSet<>(seen)).apply();
                 if(limited()) showLimit();
             } catch(Exception ignored) { /* Unrecognised markup: native time cap still applies. */ }
         });
@@ -231,8 +239,12 @@ public class MainActivity extends Activity {
     private void refreshSession() {
         long until=prefs.getLong("cooldown",0);
         if(until>0 && System.currentTimeMillis()>=until) {
+            sessionGeneration++;
             prefs.edit().putLong("sessionMs",0).putLong("cooldown",0).remove("seen").apply(); seen.clear();
-            // A fresh document is loaded on the next navigation, clearing its per-page seen set too.
+            // Also reset a live SPA document: returning from Inbox may not reload it.
+            if (web != null && Policy.internal(web.getUrl())) web.evaluateJavascript(
+                "window.__ataraxiaStillness && window.__ataraxiaStillness.configure({reset:true,limit:"
+                    + prefs.getInt("postLimit",10) + ",ids:[]});",null);
         }
     }
     private boolean limited() {
@@ -242,6 +254,9 @@ public class MainActivity extends Activity {
     }
     private String summary() {
         long remaining=Math.max(0,prefs.getInt("dailyMinutes",15)*60000L-prefs.getLong("dailyMs",0));
+        long breakSeconds = Math.max(0,(prefs.getLong("cooldown",0)-System.currentTimeMillis()+999)/1000);
+        if (remaining == 0) return "Daily allowance reached · Inbox available";
+        if (breakSeconds > 0) return "Break: " + (breakSeconds/60) + "m " + (breakSeconds%60) + "s · Inbox available";
         return (remaining/60000)+"m "+((remaining/1000)%60)+"s left today  ·  "+seen.size()+" / "+prefs.getInt("postLimit",10)+" posts";
     }
     private void basePanel() {
@@ -252,12 +267,60 @@ public class MainActivity extends Activity {
     private void showHome() {
         basePanel();
         panel.addView(text("Your attention.\nYour choice.",34,INK));
-        panel.addView(text("Check in with people. Leave the endless feed behind.",17,MUTED));
+        panel.addView(text(focused()?"Focused · Messages and deliberate profile visits.":"Balanced · Messages and a short, capped feed.",17,MUTED));
         space(); card("INBOX FIRST","Messages remain available after your browsing limit. No background message notifications in this pilot.");
         button(panel,"Open Instagram inbox",()->navigate(BASE+"/direct/inbox/"));
-        button(panel,"Browse a little",()->openFeed());
+        if (!focused()) button(panel,"Browse a little",()->openFeed());
+        button(panel,"Visit a profile",()->visitProfile());
+        button(panel,"Saved profiles ("+savedProfiles().size()+")",()->showSavedProfiles());
+        button(panel,"Change mode",()->chooseMode());
+        button(panel,"Why Ataraxia?",()->showPhilosophy(0,false));
         space(); card("YOUR BOUNDARIES",prefs.getInt("postLimit",10)+" posts per session\n"+prefs.getInt("sessionMinutes",5)+" minutes per session\n"+prefs.getInt("dailyMinutes",15)+" minutes browsing per day\n10-minute break between capped sessions");
         panel.addView(text("Reels + Explore blocked · Sponsored posts filtered where detected\n\nInstagram still processes your account activity. Filtering can miss ads and recommendations. Limits apply only here.",13,MUTED));
+    }
+    private void showPhilosophy(int page,boolean onboarding) {
+        basePanel();
+        if(page==0) {
+            panel.addView(text("About 4,000 weeks.",13,ACCENT));
+            panel.addView(text("Time is the one thing\nyou cannot replace.",34,INK));
+            panel.addView(text("An 80-year life is roughly 4,174 weeks. The point is not to fear that number. It is to remember that attention is how life is spent.",17,MUTED));
+            space();
+            card("A FINITE LIFE","Infinite feeds behave as though your time has no edge. Your life does. Ataraxia makes the boundary visible.");
+            card("THE AIM","Use social media deliberately: connect, create, respond—then return to the life beyond the screen.");
+            button(panel,"Continue · What is Ataraxia?",()->showPhilosophy(1,onboarding));
+            if(!onboarding) button(panel,"Back home",()->showHome());
+            return;
+        }
+        if(page==1) {
+            panel.addView(text("Ataraxia",13,ACCENT));
+            panel.addView(text("Freedom from\nunnecessary disturbance.",34,INK));
+            panel.addView(text("The ancient Greek ideal was not numbness or withdrawal. It was a steadier mind—less governed by noise, impulse and manufactured urgency.",17,MUTED));
+            space();
+            card("ATTENTION","Notice what is asking for your mind before giving it away.");
+            card("INTENTION","Open with a purpose instead of surrendering to whatever appears next.");
+            card("MODERATION","Enough is a complete experience. More is not automatically better.");
+            card("AGENCY","The boundary belongs to you. Ataraxia supports your choice; it does not claim control over you.");
+            button(panel,"Continue · Choose how to enter",()->showPhilosophy(2,onboarding));
+            button(panel,"Back",()->showPhilosophy(0,onboarding));
+            return;
+        }
+        panel.addView(text("Choose with intention.",13,ACCENT));
+        panel.addView(text("What are you here to do?",34,INK));
+        panel.addView(text("Both modes keep Reels and Explore blocked. You can change modes and boundaries whenever you choose.",17,MUTED));
+        space();
+        card("FOCUSED","Messages and deliberate profile visits. The home feed stays unavailable.");
+        button(panel,"Begin in Focused mode",()->finishPhilosophy(true,onboarding));
+        card("BALANCED","Messages, profiles and a short feed contained by your post, session and daily limits.");
+        button(panel,"Begin in Balanced mode",()->finishPhilosophy(false,onboarding));
+        button(panel,"Back",()->showPhilosophy(1,onboarding));
+        space();
+        panel.addView(text("Ataraxia is free and has no developer ads or analytics. It displays Instagram's website, so Meta still processes your account activity. Filtering is best effort and limits apply only inside this app.",13,MUTED));
+    }
+    private void finishPhilosophy(boolean focusedMode,boolean onboarding) {
+        prefs.edit().putBoolean("focused",focusedMode).putBoolean("philosophyIntro",true).putBoolean("intro",true).apply();
+        web.stopLoading();
+        showHome();
+        if(onboarding) Toast.makeText(this,focusedMode?"Focused mode selected.":"Balanced mode selected.",Toast.LENGTH_SHORT).show();
     }
     private void showLimit() {
         if(prefs.getLong("cooldown",0)==0) prefs.edit().putLong("cooldown",System.currentTimeMillis()+10*60000L).apply();
@@ -268,13 +331,19 @@ public class MainActivity extends Activity {
     }
     private void showError(String message) { basePanel(); panel.addView(text("Connection paused",28,INK)); panel.addView(text(message,17,MUTED)); button(panel,"Try inbox again",()->navigate(BASE+"/direct/inbox/")); }
     private void settings() {
-        new AlertDialog.Builder(this).setTitle("Your boundaries").setItems(new String[]{"Posts per session","Minutes per session","Daily browsing minutes","Privacy and limitations","Clear Instagram login"},(d,which)->{
+        new AlertDialog.Builder(this).setTitle("Your boundaries").setItems(new String[]{"Posts per session","Minutes per session","Daily browsing minutes","Privacy and limitations","Clear Instagram login","Refresh current page","Filter status","Focused / Balanced mode","Export settings","Import settings","Philosophy and purpose"},(d,which)->{
             if(which==0) choose("postLimit","Posts per session",new int[]{5,10,15,20});
             if(which==1) choose("sessionMinutes","Minutes per session",new int[]{2,5,10});
             if(which==2) choose("dailyMinutes","Daily browsing minutes",new int[]{5,15,30,60});
             if(which==3) new AlertDialog.Builder(this).setTitle("Local controls, honest limits")
                 .setMessage("Only Internet permission. No analytics, admin, Accessibility, VPN or notification access.\n\nInstagram login cookies remain in this app's private WebView storage; Meta still receives activity. Android backup is disabled. Settings and counters stay on-device.\n\nSponsored-post detection currently targets English and Afrikaans labels in recognised feed markup. It can miss ads. Post counting can miss unsupported layouts; native time limits remain active.\n\nNo calls, background notifications, downloads or Facebook sign-in support. Use username/password and 2FA on Instagram's own page.\n\nLimits are voluntary: settings, clock changes, clearing app data or other apps can bypass them. This is not parental-control enforcement.")
                 .setPositiveButton("Done",null).show();
+            if(which==8) settingsFile(true);
+            if(which==9) settingsFile(false);
+            if(which==10) showPhilosophy(0,false);
+            if(which==7) chooseMode();
+            if(which==5) refreshPage();
+            if(which==6) filterStatus();
             if(which==4) new AlertDialog.Builder(this).setTitle("Clear Instagram session?").setMessage("Removes this app's login cookies, website storage and cache. Your limits remain.")
                 .setNegativeButton("Cancel",null).setPositiveButton("Clear",(a,b)->{
                     web.stopLoading(); showHome(); web.loadUrl("about:blank");
@@ -282,6 +351,145 @@ public class MainActivity extends Activity {
                     WebStorage.getInstance().deleteAllData(); web.clearCache(true); web.clearHistory();
                 }).show();
         }).show();
+    }
+    private void chooseMode() {
+        new AlertDialog.Builder(this).setTitle("Choose your mode")
+            .setSingleChoiceItems(new String[]{"Focused — inbox and profiles", "Balanced — add a capped feed"},focused()?0:1,(d,n)->{
+                prefs.edit().putBoolean("focused",n==0).apply();
+                // Mode changes never reset time, post counts or the cooldown.
+                web.stopLoading(); d.dismiss(); showHome();
+            }).setNegativeButton("Cancel",null).show();
+    }
+    private void visitProfile() {
+        EditText input=new EditText(this); input.setSingleLine(true); input.setHint("Instagram username");
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Visit a profile").setView(input)
+            .setNegativeButton("Cancel",null).setPositiveButton("Open",null).create();
+        dialog.setButton(AlertDialog.BUTTON_NEUTRAL,"Save & open",(DialogInterface.OnClickListener)null);
+        dialog.setOnShowListener(d->{
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->openEnteredProfile(input,dialog,false));
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->openEnteredProfile(input,dialog,true));
+        });
+        dialog.show();
+    }
+    private SortedSet<String> savedProfiles() {
+        SortedSet<String> result=new TreeSet<>();
+        for (String raw:prefs.getStringSet("savedProfiles",Collections.emptySet())) {
+            String name=Policy.profileName(raw); if(name!=null && result.size()<20) result.add(name);
+        }
+        return result;
+    }
+    private void openEnteredProfile(EditText input,AlertDialog dialog,boolean save) {
+        String name=Policy.profileName(input.getText().toString());
+        if (name==null) {input.setError("Enter a profile username, not a link or Instagram section.");return;}
+        if(save) {
+            Set<String> names=savedProfiles();
+            if(names.size()>=20 && !names.contains(name)) {input.setError("You have 20 saved profiles. Remove one first.");return;}
+            names.add(name);prefs.edit().putStringSet("savedProfiles",new HashSet<>(names)).apply();
+        }
+        dialog.dismiss();navigate(BASE+"/"+name+"/");
+    }
+    private void showSavedProfiles() {
+        String[] names=savedProfiles().toArray(new String[0]);
+        if(names.length==0) {
+            new AlertDialog.Builder(this).setTitle("Saved profiles")
+                .setMessage("Save up to 20 usernames for deliberate visits. They stay on this device; nothing is fetched until you open a profile.")
+                .setPositiveButton("Add a profile",(d,w)->visitProfile()).setNegativeButton("Close",null).show();return;
+        }
+        new AlertDialog.Builder(this).setTitle("Saved profiles · on this device").setItems(names,(d,n)->{
+            String name=names[n];
+            new AlertDialog.Builder(this).setTitle("@"+name)
+                .setPositiveButton("Open",(a,b)->navigate(BASE+"/"+name+"/"))
+                .setNeutralButton("Remove saved profile",(a,b)->{
+                    Set<String> saved=savedProfiles();saved.remove(name);
+                    prefs.edit().putStringSet("savedProfiles",new HashSet<>(saved)).apply();showHome();
+                }).setNegativeButton("Cancel",null).show();
+        }).setPositiveButton("Add a profile",(d,w)->visitProfile()).setNegativeButton("Close",null).show();
+    }
+    private void settingsFile(boolean export) {
+        String message=export
+            ? "Exports your mode, boundaries and saved usernames as a readable file. It excludes Instagram login, messages and usage history. Choose a location you trust; cloud document providers may upload it."
+            : "Select an Ataraxia settings backup. You can review its mode and boundaries before replacing your settings. Login and current usage counters are not changed.";
+        new AlertDialog.Builder(this).setTitle(export?"Export settings":"Import settings").setMessage(message)
+            .setNegativeButton("Cancel",null).setPositiveButton("Choose file",(d,w)->{
+                Intent intent=new Intent(export?Intent.ACTION_CREATE_DOCUMENT:Intent.ACTION_OPEN_DOCUMENT)
+                    .addCategory(Intent.CATEGORY_OPENABLE).setType(export?"text/plain":"*/*");
+                if(export) intent.putExtra(Intent.EXTRA_TITLE,"Ataraxia-settings.properties");
+                try{startActivityForResult(intent,export?43:44);}
+                catch(ActivityNotFoundException e){Toast.makeText(this,"No document picker available.",Toast.LENGTH_LONG).show();}
+            }).show();
+    }
+    private void backupUi(Runnable action) {
+        handler.post(()->{if(!isFinishing() && !isDestroyed())action.run();});
+    }
+    private void transferSettings(boolean export,Uri uri) {
+        final SettingsBackup snapshot=new SettingsBackup(focused(),prefs.getInt("postLimit",10),
+            prefs.getInt("sessionMinutes",5),prefs.getInt("dailyMinutes",15),savedProfiles());
+        backupIO.execute(()->{
+            try {
+                if(export) {
+                    try(OutputStream out=getContentResolver().openOutputStream(uri,"wt")) {
+                        if(out==null)throw new IOException("No output");
+                        out.write(snapshot.encode());out.flush();
+                    }
+                    backupUi(()->Toast.makeText(this,"Settings exported. Login and usage history were excluded.",Toast.LENGTH_LONG).show());
+                } else {
+                    final SettingsBackup incoming;
+                    try(InputStream in=getContentResolver().openInputStream(uri)) {incoming=SettingsBackup.decode(in);}
+                    backupUi(()->confirmSettingsImport(incoming));
+                }
+            } catch(IOException|IllegalArgumentException|SecurityException e) {
+                backupUi(()->new AlertDialog.Builder(this).setTitle(export?"Export failed":"Import rejected")
+                    .setMessage(export?"Could not finish writing the file. Remove any incomplete file and try another location.":"The file is unreadable, too large or not a supported settings backup. Your settings have not changed.")
+                    .setPositiveButton("Done",null).show());
+            }
+        });
+    }
+    private void confirmSettingsImport(SettingsBackup incoming) {
+        new AlertDialog.Builder(this).setTitle("Replace settings?")
+            .setMessage((incoming.focused?"Focused":"Balanced")+" mode\n"+incoming.posts+" posts per session\n"
+                +incoming.sessionMinutes+" minutes per session\n"+incoming.dailyMinutes+" minutes per day\n"
+                +incoming.profiles.size()+" saved profiles\n\nReplaces current preferences and saved profiles. Existing login, usage counters and cooldown stay unchanged.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Replace settings",(d,w)->{
+                prefs.edit().putBoolean("focused",incoming.focused).putInt("postLimit",incoming.posts)
+                    .putInt("sessionMinutes",incoming.sessionMinutes).putInt("dailyMinutes",incoming.dailyMinutes)
+                    .putStringSet("savedProfiles",new HashSet<>(incoming.profiles)).apply();
+                sessionGeneration++;web.stopLoading();showHome();
+                Toast.makeText(this,"Settings restored.",Toast.LENGTH_SHORT).show();
+            }).show();
+    }
+    private void refreshPage() {
+        String url=web.getUrl();
+        if (!browsing || !Policy.internal(url)) {
+            Toast.makeText(this,"Open Feed or Inbox first.",Toast.LENGTH_SHORT).show(); return;
+        }
+        rollDay(); refreshSession();
+        if (allowNavigation(url)) web.reload();
+    }
+    private void filterStatus() {
+        if (!browsing || !Policy.internal(web.getUrl())) {
+            new AlertDialog.Builder(this).setTitle("Filter status").setMessage("Open Feed or Inbox to check the current page.")
+                .setPositiveButton("Done",null).show(); return;
+        }
+        final int page=generation;
+        web.evaluateJavascript("JSON.stringify(window.__ataraxiaStillness ? window.__ataraxiaStillness.snapshot() : null)",raw->{
+            if (isFinishing() || page!=generation || !browsing) return;
+            String message="Filter not ready. Try refreshing the page. Native time limits remain active.";
+            try {
+                Object parsed=new JSONTokener(raw).nextValue();
+                if (parsed instanceof String) {
+                    JSONObject state=new JSONObject((String)parsed);
+                    if (!state.optBoolean("feed")) message="Feed filtering is inactive on this page. Messages are not inspected.";
+                    else message="Filter loaded\nPosts or suggestions hidden on this page: "+state.optInt("hiddenAds")
+                        +"\nPost containers detected: "+state.optInt("containers")
+                        +"\n\n"+(state.optInt("containers")==0
+                            ? "Post counting is unavailable in this layout. Native time limits remain active."
+                            : "Post counting requires supported links within these containers. Ad filtering is best effort.");
+                }
+            } catch(Exception ignored) { }
+            new AlertDialog.Builder(this).setTitle("Filter status").setMessage(message)
+                .setPositiveButton("Done",null).show();
+        });
     }
     private void choose(String key,String title,int[] values) {
         String[] labels=Arrays.stream(values).mapToObj(String::valueOf).toArray(String[]::new);
@@ -295,6 +503,19 @@ public class MainActivity extends Activity {
     private void addNav(LinearLayout nav,String label,Runnable action){Button b=new Button(this);b.setText(label);b.setTextSize(12);b.setAllCaps(false);b.setPadding(0,0,0,0);b.setTextColor(INK);b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(CARD));b.setOnClickListener(v->action.run());nav.addView(b,new LinearLayout.LayoutParams(0,dp(52),1));}
     @Override protected void onResume(){super.onResume();active=true;lastTick=SystemClock.elapsedRealtime();if(web!=null && browsing)web.onResume();handler.post(ticker);}
     @Override protected void onPause(){active=false;handler.removeCallbacks(ticker);if(web!=null)web.onPause();super.onPause();}
-    @Override public void onBackPressed(){if(browsing)showHome();else super.onBackPressed();}
-    @Override protected void onDestroy(){handler.removeCallbacks(ticker);if(fileCallback!=null)fileCallback.onReceiveValue(null);if(web!=null){content.removeView(web);web.destroy();}super.onDestroy();}
+    @Override public void onBackPressed(){
+        if (!browsing) { super.onBackPressed(); return; }
+        rollDay(); refreshSession();
+        if (web.canGoBack()) {
+            WebBackForwardList history=web.copyBackForwardList();
+            WebHistoryItem previous=history.getItemAtIndex(history.getCurrentIndex()-1);
+            if (previous!=null && Policy.internal(previous.getUrl()) && !Policy.blocked(previous.getUrl(),focused())) {
+                if (!Policy.exempt(previous.getUrl()) && limited()) showLimit();
+                else web.goBack();
+                return;
+            }
+        }
+        showHome();
+    }
+    @Override protected void onDestroy(){backupIO.shutdownNow();handler.removeCallbacks(ticker);if(fileCallback!=null)fileCallback.onReceiveValue(null);if(web!=null){content.removeView(web);web.destroy();}super.onDestroy();}
 }
