@@ -11,6 +11,7 @@ activity_contract = [
     "AtaraxiaLandingView",
     "AtaraxiaHomeView",
     "showLanding();",
+    'landing.setActions(()->{if(prefs.getBoolean("philosophyIntro",false))showHome();else showPhilosophy(0,true);}',
     "Focused — inbox only",
     "Legacy saved profiles are ignored",
     "private void selectNav(String label)",
