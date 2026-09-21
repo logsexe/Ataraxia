@@ -17,16 +17,16 @@ import java.time.LocalDate;
 import java.util.*;
 
 /** Small, dependency-free Android pilot. All browsing happens in this app's WebView. */
-public class MainActivity extends Activity {
+public class MainActivity extends androidx.activity.ComponentActivity {
     private static final String BASE = "https://www.instagram.com";
     private static final int BG = 0xff0b1411, SURFACE = 0xff111e19, CARD = 0xff182721, CARD_ALT = 0xff20332a;
     private static final int INK = 0xfff3f0e7, MUTED = 0xff9fb1a7, ACCENT = 0xffbce8c9, ACCENT_STRONG = 0xff7fd29b;
     private static final int LINE = 0xff2d4137, DANGER = 0xffffb4a8;
     private SharedPreferences prefs;
     private WebView web;
-    private LinearLayout root, panel, nav;
-    private TextView status, modePill;
-    private final List<TextView> navItems = new ArrayList<>();
+    private LinearLayout root, panel;
+    private AtaraxiaTopBarView composeTopBar;
+    private AtaraxiaBottomBarView composeBottomBar;
     private FrameLayout content;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean active, browsing, waitingSnapshot;
@@ -55,7 +55,7 @@ public class MainActivity extends Activity {
                 if (browsing && !waitingSnapshot && Policy.feed(url)) pollPosts();
             }
             String nextSummary = summary();
-            if (!nextSummary.contentEquals(status.getText())) status.setText(nextSummary);
+            composeTopBar.update(focused()?"FOCUSED":"BALANCED",nextSummary);
             handler.postDelayed(this, 1000);
         }
     };
@@ -81,16 +81,9 @@ public class MainActivity extends Activity {
             v.setPadding(dp(20)+bars.left,dp(8)+bars.top,dp(20)+bars.right,dp(10)+bars.bottom);
             return insets;
         });
-        LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);header.setPadding(0,dp(4),0,dp(8));
-        LinearLayout brand=new LinearLayout(this);brand.setOrientation(LinearLayout.VERTICAL);
-        TextView title=text("ATARAXIA",15,INK);title.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
-        title.setLetterSpacing(.16f);title.setPadding(0,0,0,0);title.setContentDescription("Ataraxia");
-        TextView subtitle=text("SOCIAL MEDIA, IN MEASURE",10,MUTED);subtitle.setLetterSpacing(.12f);subtitle.setPadding(0,0,0,0);
-        brand.addView(title);brand.addView(subtitle);header.addView(brand,new LinearLayout.LayoutParams(0,-2,1));
-        modePill=pill(focused()?"FOCUSED":"BALANCED");header.addView(modePill);
-        root.addView(header);
-        status=text(summary(),12,MUTED);status.setGravity(Gravity.CENTER);status.setPadding(dp(12),dp(8),dp(12),dp(8));
-        status.setBackground(surface(SURFACE,14,LINE,1));root.addView(status,new LinearLayout.LayoutParams(-1,-2));
+        composeTopBar = new AtaraxiaTopBarView(this);
+        composeTopBar.update(focused()?"FOCUSED":"BALANCED",summary());
+        root.addView(composeTopBar,new LinearLayout.LayoutParams(-1,-2));
         content = new FrameLayout(this);
         root.addView(content,new LinearLayout.LayoutParams(-1,0,1));
         web = new WebView(this); web.setBackgroundColor(BG);
@@ -99,11 +92,9 @@ public class MainActivity extends Activity {
         panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(0,dp(28),0,dp(28));
         scroll.addView(panel); content.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
         panel.setTag(scroll);
-        nav = new LinearLayout(this);nav.setPadding(dp(5),dp(5),dp(5),dp(5));nav.setBackground(surface(SURFACE,22,LINE,1));
-        nav.setElevation(dp(8));
-        addNav(nav,"Home",()->showHome()); addNav(nav,"Inbox",()->navigate(BASE+"/direct/inbox/"));
-        addNav(nav,"Feed",()->openFeed()); addNav(nav,"Settings",()->settings());
-        LinearLayout.LayoutParams navParams=new LinearLayout.LayoutParams(-1,dp(64));navParams.topMargin=dp(8);root.addView(nav,navParams);
+        composeBottomBar = new AtaraxiaBottomBarView(this);
+        composeBottomBar.setActions(()->showHome(),()->navigate(BASE+"/direct/inbox/"),()->openFeed(),()->settings());
+        root.addView(composeBottomBar,new LinearLayout.LayoutParams(-1,dp(80)));
         setContentView(root);
         configureWeb();
         if (prefs.getBoolean("philosophyIntro",false)) showHome();
@@ -280,7 +271,7 @@ public class MainActivity extends Activity {
         ((View)panel.getTag()).setVisibility(View.VISIBLE); panel.removeAllViews();
         panel.animate().cancel();panel.setAlpha(0f);panel.setTranslationY(dp(10));
         panel.post(()->panel.animate().alpha(1f).translationY(0f).setDuration(220).start());
-        updateModePill();
+        composeTopBar.update(focused()?"FOCUSED":"BALANCED",summary());
     }
     private void showHome() {
         basePanel();selectNav("Home");
@@ -533,7 +524,6 @@ public class MainActivity extends Activity {
     private LinearLayout container(int color,int radius,int strokeColor,int strokeWidth){LinearLayout v=new LinearLayout(this);v.setOrientation(LinearLayout.VERTICAL);v.setBackground(surface(color,radius,strokeColor,strokeWidth));v.setElevation(dp(2));return v;}
     private TextView text(String s,int size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);t.setLineSpacing(0,1.12f);t.setFontFeatureSettings("kern");t.setPadding(0,dp(5),0,dp(9));return t;}
     private TextView pill(String label){TextView t=text(label,10,ACCENT);t.setGravity(Gravity.CENTER);t.setLetterSpacing(.12f);t.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));t.setPadding(dp(12),dp(7),dp(12),dp(7));t.setBackground(surface(CARD_ALT,20,LINE,1));return t;}
-    private void updateModePill(){if(modePill!=null)modePill.setText(focused()?"FOCUSED":"BALANCED");}
     private void eyebrow(String label){TextView t=text(label,11,ACCENT);t.setLetterSpacing(.16f);t.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));panel.addView(t);}
     private void heading(String label){TextView t=text(label,36,INK);t.setTypeface(Typeface.create("sans-serif-light",Typeface.NORMAL));t.setLineSpacing(dp(2),1.0f);t.setAccessibilityHeading(true);panel.addView(t);}
     private void section(String label){TextView t=text(label,11,MUTED);t.setLetterSpacing(.14f);t.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));t.setPadding(0,dp(5),0,dp(12));panel.addView(t);}
@@ -545,8 +535,7 @@ public class MainActivity extends Activity {
     private void stepDots(int page){LinearLayout dots=new LinearLayout(this);dots.setGravity(Gravity.CENTER);for(int i=0;i<3;i++){View dot=new View(this);dot.setBackground(surface(i==page?ACCENT_STRONG:LINE,8,0,0));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(dp(i==page?28:8),dp(8));p.setMargins(dp(4),0,dp(4),dp(18));dots.addView(dot,p);}panel.addView(dots);}
     private void button(LinearLayout parent,String label,Runnable action){TextView b=text(label,15,BG);b.setGravity(Gravity.CENTER);b.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));b.setPadding(dp(18),0,dp(18),0);b.setBackground(ripple(0x33000000,surface(ACCENT,18,0,0)));b.setClickable(true);b.setFocusable(true);b.setOnClickListener(v->{v.animate().scaleX(.98f).scaleY(.98f).setDuration(70).withEndAction(()->{v.animate().scaleX(1f).scaleY(1f).setDuration(110).start();action.run();}).start();});LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(56));p.bottomMargin=dp(10);parent.addView(b,p);}
     private void secondaryButton(LinearLayout parent,String label,Runnable action){TextView b=text(label,14,INK);b.setGravity(Gravity.CENTER);b.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));b.setBackground(ripple(0x227fd29b,surface(SURFACE,17,LINE,1)));b.setClickable(true);b.setFocusable(true);b.setOnClickListener(v->action.run());LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(parent==panel?-1:0,dp(52),parent==panel?0:1);p.setMargins(dp(3),0,dp(3),dp(10));parent.addView(b,p);}
-    private void addNav(LinearLayout parent,String label,Runnable action){TextView b=text(label,11,MUTED);b.setGravity(Gravity.CENTER);b.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));b.setPadding(0,0,0,0);b.setTag(label);b.setClickable(true);b.setFocusable(true);b.setOnClickListener(v->action.run());navItems.add(b);parent.addView(b,new LinearLayout.LayoutParams(0,-1,1));}
-    private void selectNav(String label){for(TextView item:navItems){boolean selected=label.equals(item.getTag());item.setTextColor(selected?ACCENT: MUTED);item.setBackground(selected?surface(CARD_ALT,17,LINE,1):null);item.setSelected(selected);}}
+    private void selectNav(String label){if(composeBottomBar!=null)composeBottomBar.select(label);}
     @Override protected void onResume(){super.onResume();active=true;lastTick=SystemClock.elapsedRealtime();if(web!=null && browsing)web.onResume();handler.post(ticker);}
     @Override protected void onPause(){active=false;handler.removeCallbacks(ticker);if(web!=null)web.onPause();super.onPause();}
     @Override public void onBackPressed(){
