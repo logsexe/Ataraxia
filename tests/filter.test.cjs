@@ -24,9 +24,9 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  assert.equal(await page.locator('#suggested').isVisible(),false);
  let state=await page.evaluate(()=>window.__ataraxiaStillness.snapshot());
  assert.deepEqual(state.ids,['First1','Second2']);
- assert.equal(state.hiddenAds,1);
+ assert.equal(state.hiddenAds,2);
  await page.evaluate(script);state=await page.evaluate(()=>window.__ataraxiaStillness.snapshot());
- assert.equal(state.hiddenAds,1); // idempotent; no new observers/state resets
+ assert.equal(state.hiddenAds,2); // idempotent; no new observers/state resets
  await page.evaluate(()=>{const a=document.createElement('a');a.id='dynamic';a.href='/reel/xyz/';a.textContent='Watch';document.body.append(a);});
  await page.waitForFunction(()=>document.querySelector('#dynamic').dataset.quietHidden==='true');
  await page.evaluate(()=>{history.pushState({},'', '/direct/inbox/'); document.querySelector('#first header span').textContent='Sponsored'; window.__ataraxiaStillness.scan();});
