@@ -12,6 +12,7 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  <article id="ad"><header><span>Sponsored</span></header><a href="/p/Ad1/">Ad</a></article>
  <article id="first"><header><span>Friend</span></header><a href="/p/First1/">Photo</a><p>I dislike sponsored posts</p></article>
  <article id="second"><header><span>Friend 2</span></header><a href="/p/Second2/">Photo 2</a></article>
+ <article id="suggested"><header><button>Follow</button></header><a href="/p/Suggested3/">Suggested</a></article>
  </body></html>`;
  await page.route('https://www.instagram.com/**',route=>route.fulfill({contentType:'text/html',body:html}));
  await page.goto('https://www.instagram.com/'); await page.evaluate(script);
@@ -20,6 +21,7 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  assert.equal(await page.locator('#inbox').isVisible(),true);
  assert.equal(await page.locator('#ad').isVisible(),false);
  assert.equal(await page.locator('#first').isVisible(),true);
+ assert.equal(await page.locator('#suggested').isVisible(),false);
  let state=await page.evaluate(()=>window.__ataraxiaStillness.snapshot());
  assert.deepEqual(state.ids,['First1','Second2']);
  assert.equal(state.hiddenAds,1);
