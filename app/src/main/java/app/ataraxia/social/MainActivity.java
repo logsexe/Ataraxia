@@ -102,7 +102,7 @@ public class MainActivity extends Activity {
         nav = new LinearLayout(this);nav.setPadding(dp(5),dp(5),dp(5),dp(5));nav.setBackground(surface(SURFACE,22,LINE,1));
         nav.setElevation(dp(8));
         addNav(nav,"Home",()->showHome()); addNav(nav,"Inbox",()->navigate(BASE+"/direct/inbox/"));
-        addNav(nav,"Browse",()->{if(focused())visitProfile();else openFeed();}); addNav(nav,"Settings",()->settings());
+        addNav(nav,"Feed",()->openFeed()); addNav(nav,"Settings",()->settings());
         LinearLayout.LayoutParams navParams=new LinearLayout.LayoutParams(-1,dp(64));navParams.topMargin=dp(8);root.addView(nav,navParams);
         setContentView(root);
         configureWeb();
@@ -218,7 +218,7 @@ public class MainActivity extends Activity {
         rollDay(); refreshSession();
         if (!allowNavigation(url)) return;
         browsing=true; ((View)panel.getTag()).setVisibility(View.GONE);
-        selectNav(Policy.exempt(url)?"Inbox":"Browse");
+        selectNav(Policy.exempt(url)?"Inbox":"Feed");
         web.setAlpha(0f);web.setVisibility(View.VISIBLE);web.onResume();lastTick=SystemClock.elapsedRealtime();web.loadUrl(url);
         web.animate().alpha(1f).setDuration(180).start();
     }
@@ -299,7 +299,7 @@ public class MainActivity extends Activity {
         today.addView(progress,new LinearLayout.LayoutParams(-1,dp(5)));panel.addView(today);space();
         section("CHOOSE AN INTENTION");
         actionTile("Messages","Open your inbox without spending your feed allowance.","Open inbox",()->navigate(BASE+"/direct/inbox/"));
-        if(!focused()) actionTile("A finite feed",prefs.getInt("postLimit",10)+" posts or "+prefs.getInt("sessionMinutes",5)+" minutes—whichever comes first.","Browse deliberately",()->openFeed());
+        if(!focused()) actionTile("Following feed","Posts from people you follow. Recognised suggestions are hidden; "+prefs.getInt("postLimit",10)+" posts or "+prefs.getInt("sessionMinutes",5)+" minutes—whichever comes first.","Open feed",()->openFeed());
         actionTile("Someone specific","Go directly to a profile you chose.","Visit a profile",()->visitProfile());
         LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);
         secondaryButton(row,"Saved · "+savedProfiles().size(),()->showSavedProfiles());
