@@ -6,6 +6,8 @@
 
 An Instagram web client designed to make checking in finite. Free, MIT-licensed source. No developer backend, ads, analytics, subscription, device-admin, Accessibility, overlay, VPN or usage-access permissions. Not affiliated with Instagram or Meta.
 
+Its product philosophy is grounded in the finite-life idea that an 80-year life is roughly 4,174 weeks: attention is how life is spent. The native introduction connects that premise to four operating principles—attention, intention, moderation and agency—and lets the user begin in Focused or Balanced mode. See [the product philosophy](docs/PHILOSOPHY.md).
+
 ## Install the pilot
 
 1. Build the pilot from source with Android Studio or download the test-signed APK from [Releases](https://github.com/logsexe/Ataraxia/releases). See [v0.1.1 installation and signing notes](docs/RELEASE-0.1.1.md).
