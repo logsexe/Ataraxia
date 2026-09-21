@@ -23,7 +23,6 @@ required_activity = [
     "AGENCY",
     "Begin in Focused mode",
     "Begin in Balanced mode",
-    "Why Ataraxia?",
     "Philosophy and purpose",
     "Ataraxia is free and has no developer ads or analytics.",
     'putBoolean("philosophyIntro",true)',
@@ -33,7 +32,7 @@ for text in required_activity:
 
 assert activity.count("showPhilosophy(0,true)") == 1, "First-run journey should have one automatic entry"
 assert "showPhilosophy(0,false)" in activity, "The philosophy must remain voluntarily revisitable"
-for text in ["A FINITE LIFE", "You have about\\n4,000 weeks.", "ATTENTION", "INTENTION", "ENOUGH", "Enter with intention"]:
+for text in ["A FINITE LIFE", "You have about\\n4,000 weeks.", "ATTENTION", "INTENTION", "ENOUGH", "Enter with intention", "Why Ataraxia?"]:
     assert text in chrome, f"Missing persistent philosophy surface: {text}"
 assert activity.index("Ataraxia is free") < activity.index("private void finishPhilosophy"), (
     "The free/privacy disclosure must appear before onboarding completes"
