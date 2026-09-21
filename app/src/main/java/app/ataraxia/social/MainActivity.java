@@ -98,8 +98,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         root.addView(composeBottomBar,new LinearLayout.LayoutParams(-1,dp(80)));
         setContentView(root);
         configureWeb();
-        if (prefs.getBoolean("philosophyIntro",false)) showLanding();
-        else showPhilosophy(0,true);
+        showLanding();
     }
     private void configureWeb() {
         WebSettings s = web.getSettings();
@@ -278,7 +277,8 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     private void showLanding() {
         basePanel();selectNav("Home");panel.setPadding(0,0,0,0);
         AtaraxiaLandingView landing=new AtaraxiaLandingView(this);
-        landing.setActions(()->showHome(),()->showPhilosophy(0,false));
+        landing.setActions(()->{if(prefs.getBoolean("philosophyIntro",false))showHome();else showPhilosophy(0,true);},
+            ()->showPhilosophy(0,!prefs.getBoolean("philosophyIntro",false)));
         panel.addView(landing,new LinearLayout.LayoutParams(-1,-2));
     }
     private void showHome() {
