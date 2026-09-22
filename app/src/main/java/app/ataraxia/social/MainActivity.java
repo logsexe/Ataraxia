@@ -282,9 +282,10 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     private void showLanding() {
         basePanel();showChrome(false);selectNav("Inbox");panel.setPadding(0,0,0,0);
         AtaraxiaLandingView landing=new AtaraxiaLandingView(this);
-        landing.setActions(()->showPhilosophy(0,true),()->showPhilosophy(0,true));
+        landing.setActions(()->beginOnboarding(),()->beginOnboarding());
         panel.addView(landing,new LinearLayout.LayoutParams(-1,-2));
     }
+    private void beginOnboarding() { showPhilosophy(0,true); }
     private void showHome() {
         if (!prefs.getBoolean("philosophyIntro",false)) showLanding();
         else navigate(BASE+"/direct/inbox/");
