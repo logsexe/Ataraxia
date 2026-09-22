@@ -155,7 +155,7 @@ class AtaraxiaPhilosophyView @JvmOverloads constructor(
                     if (!onboarding) FullButton("Back home", onClick = { back?.run() }, secondary = true)
                 }
                 1 -> ScreenFrame("ATARAXIA", "Freedom from\nunnecessary disturbance.",
-                    "The ancient Greek ideal was not withdrawal. It was a steadier mind—less governed by noise, impulse and manufactured urgency.") {
+                    "Ataraxia (ἀταραξία) is the ancient Greek idea of a calm, untroubled mind—freedom from unnecessary disturbance. It is not withdrawal; it is steadiness amid noise, impulse and manufactured urgency.") {
                     Thought("ATTENTION", "Notice what is asking for your mind.")
                     Thought("INTENTION", "Open with a purpose.")
                     Thought("MODERATION", "Enough is a complete experience.")
