@@ -98,7 +98,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         panel.setTag(scroll);
         composeBottomBar = new AtaraxiaBottomBarView(this);
         composeBottomBar.setActions(()->navigate(BASE+"/direct/inbox/"),()->openFeed(),()->settings());
-        root.addView(composeBottomBar,new LinearLayout.LayoutParams(-1,dp(80)));
+        root.addView(composeBottomBar,new LinearLayout.LayoutParams(-1,dp(88)));
         setContentView(root);
         configureWeb();
         if (prefs.getBoolean("philosophyIntro",false)) navigate(BASE+"/direct/inbox/");
