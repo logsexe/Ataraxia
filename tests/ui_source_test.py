@@ -22,7 +22,7 @@ for token in [
 ]:
  assert token in activity,token
 assert 'NavItem("Home"' not in chrome
-assert chrome.count("NavItem(")==3
+assert chrome.count('NavItem("')==3
 for removed in ["Visit a profile","Someone specific","Saved profiles","private void visitProfile()","private void showSavedProfiles()"]:
  assert removed not in activity+chrome+surfaces,removed
 for forbidden in ["LottieAnimationView","FirebaseAnalytics","com.google.android.gms"]:
