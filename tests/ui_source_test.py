@@ -21,7 +21,11 @@ for token in [
  'composeBottomBar.setActions(()->navigate(BASE+"/direct/inbox/"),()->openFeed(),()->settings())',
 ]:
  assert token in activity,token
-assert "SNAPSHOT_POLL_MS = 500L" in activity
+assert "SNAPSHOT_POLL_MS = 200L" in activity
+assert "SNAPSHOT_TIMEOUT_MS = 2000L" in activity
+assert "if (request!=snapshotRequest) return;" in activity
+assert "if (seen.size()!=previousCount) {" in activity
+assert "minLines = 2" in chrome
 assert "TICK_MS = 1000L" in activity
 assert "handler.post(snapshotter)" in activity
 assert "handler.removeCallbacks(snapshotter)" in activity

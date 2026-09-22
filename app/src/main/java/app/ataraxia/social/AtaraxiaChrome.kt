@@ -131,6 +131,8 @@ class AtaraxiaTopBarView @JvmOverloads constructor(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 5.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
+                // Keep the WebView viewport stable as the counter/timer wraps.
+                minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )

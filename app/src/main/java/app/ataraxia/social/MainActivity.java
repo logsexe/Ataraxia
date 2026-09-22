@@ -19,7 +19,7 @@ import java.util.*;
 /** Small, dependency-free Android pilot. All browsing happens in this app's WebView. */
 public class MainActivity extends androidx.activity.ComponentActivity {
     private static final String BASE = "https://www.instagram.com";
-    private static final long TICK_MS = 1000L, SNAPSHOT_POLL_MS = 500L;
+    private static final long TICK_MS = 1000L, SNAPSHOT_POLL_MS = 200L, SNAPSHOT_TIMEOUT_MS = 2000L;
     private static final int BG = 0xff0b1411, SURFACE = 0xff111e19, CARD = 0xff182721, CARD_ALT = 0xff20332a;
     private static final int INK = 0xfff3f0e7, MUTED = 0xff9fb1a7, ACCENT = 0xffbce8c9, ACCENT_STRONG = 0xff7fd29b;
     private static final int LINE = 0xff2d4137, DANGER = 0xffffb4a8;
@@ -31,12 +31,12 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     private FrameLayout content;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean active, browsing, waitingSnapshot;
-    private long lastTick, lastSnapshotPoll;
+    private long lastTick, lastSnapshotPoll, snapshotStarted, lastFilterRepair;
     private String script;
     private ValueCallback<Uri[]> fileCallback;
     private final java.util.concurrent.ExecutorService backupIO=java.util.concurrent.Executors.newSingleThreadExecutor();
     private final Set<String> seen = new HashSet<>();
-    private int generation, sessionGeneration;
+    private int generation, sessionGeneration, snapshotRequest;
     private final Runnable ticker = new Runnable() {
         public void run() {
             if (!active) return;
@@ -64,7 +64,10 @@ public class MainActivity extends androidx.activity.ComponentActivity {
             if (!active) return;
             long now=SystemClock.elapsedRealtime();
             String url=web==null?null:web.getUrl();
-            if (browsing && !waitingSnapshot && Policy.feed(url) && now-lastSnapshotPoll>=SNAPSHOT_POLL_MS) {
+            if (waitingSnapshot && now-snapshotStarted>=SNAPSHOT_TIMEOUT_MS) {
+                waitingSnapshot=false; snapshotRequest++;
+            }
+            if (browsing && !waitingSnapshot && Policy.internal(url) && Policy.feed(url) && now-lastSnapshotPoll>=SNAPSHOT_POLL_MS) {
                 lastSnapshotPoll=now;
                 pollPosts();
             }
@@ -131,7 +134,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
                 return !allowNavigation(request.getUrl().toString());
             }
             @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon) {
-                generation++; waitingSnapshot=false;
+                generation++; waitingSnapshot=false; snapshotRequest++; lastFilterRepair=0;
                 if (!Policy.internal(url)) { web.stopLoading(); showHome(); return; }
                 if (Policy.blocked(url,focused())) { rejectRoute(); return; }
                 if (!Policy.exempt(url) && limited()) { web.stopLoading(); showLimit(); return; }
@@ -140,10 +143,11 @@ public class MainActivity extends androidx.activity.ComponentActivity {
             @Override public void onPageFinished(WebView view,String url) {
                 if (!browsing || !Policy.internal(url) || Policy.blocked(url,focused())) return;
                 final int page = generation;
-                String configuredScript = script + "\nwindow.__ataraxiaStillness && window.__ataraxiaStillness.configure({focused:" + focused() + ",limit:"
-                    + prefs.getInt("postLimit",10) + ",ids:" + new JSONArray(new ArrayList<>(seen)).toString() + "});";
-                web.evaluateJavascript(configuredScript, value -> {
-                    if (browsing && page==generation) web.setVisibility(View.VISIBLE);
+                web.evaluateJavascript(configuredFilterScript(), value -> {
+                    if (browsing && page==generation) {
+                        web.setVisibility(View.VISIBLE);
+                        if (!waitingSnapshot && Policy.internal(web.getUrl()) && Policy.feed(web.getUrl())) pollPosts();
+                    }
                 });
                 CookieManager.getInstance().flush();
             }
@@ -232,22 +236,41 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         web.stopLoading(); showHome(); Toast.makeText(this,focused()?"Focused mode: home feed, Reels and Explore are off.":"Reels and Explore are switched off.",Toast.LENGTH_SHORT).show();
     }
     private void openFeed() { if(focused()){rejectRoute();return;} refreshSession(); if(limited()) showLimit(); else navigate(BASE+"/"); }
+    private String configuredFilterScript() {
+        // Configuration precedes the script's first count (including Focused mode).
+        return "window.__ataraxiaConfig={focused:" + focused() + ",limit:" + prefs.getInt("postLimit",10)
+            + ",ids:" + new JSONArray(new ArrayList<>(seen)).toString() + "};\n" + script;
+    }
+    private void repairFilter() {
+        long now=SystemClock.elapsedRealtime();
+        if (!browsing || !Policy.internal(web.getUrl()) || !Policy.feed(web.getUrl()) || now-lastFilterRepair<5000L) return;
+        lastFilterRepair=now;
+        web.evaluateJavascript(configuredFilterScript(),null);
+    }
     private void pollPosts() {
-        waitingSnapshot=true; final int page=generation, session=sessionGeneration;
+        waitingSnapshot=true; snapshotStarted=SystemClock.elapsedRealtime();
+        final int page=generation, session=sessionGeneration, request=++snapshotRequest;
         web.evaluateJavascript("JSON.stringify(window.__ataraxiaStillness ? window.__ataraxiaStillness.snapshot() : null)",raw->{
+            // A late callback must not release or update a newer page's request.
+            if (request!=snapshotRequest) return;
             waitingSnapshot=false;
             if(!browsing || page!=generation || session!=sessionGeneration || !Policy.internal(web.getUrl()) || !Policy.feed(web.getUrl())) return;
             try {
                 Object parsed=new JSONTokener(raw).nextValue();
-                if(!(parsed instanceof String)) return;
-                JSONObject obj=new JSONObject((String)parsed); JSONArray ids=obj.optJSONArray("ids");
+                if(!(parsed instanceof String) || "null".equals(parsed)) { repairFilter(); return; }
+                JSONObject obj=new JSONObject((String)parsed);
+                if (!obj.optBoolean("feed")) return;
+                JSONArray ids=obj.optJSONArray("ids");
+                int previousCount=seen.size();
                 if(ids!=null) for(int i=0;i<Math.min(ids.length(),500);i++) {
                     String id=ids.optString(i); if(id.matches("[A-Za-z0-9_-]{1,80}")) seen.add(id);
                 }
-                if (!seen.equals(prefs.getStringSet("seen",Collections.emptySet())))
+                if (seen.size()!=previousCount) {
                     prefs.edit().putStringSet("seen",new HashSet<>(seen)).apply();
+                    composeTopBar.update(focused()?"FOCUSED":"BALANCED",summary());
+                }
                 if(limited()) showLimit();
-            } catch(Exception ignored) { /* Unrecognised markup: native time cap still applies. */ }
+            } catch(Exception ignored) { repairFilter(); /* Native time cap remains independent. */ }
         });
     }
     private void rollDay() {
@@ -435,11 +458,13 @@ public class MainActivity extends androidx.activity.ComponentActivity {
                 if (parsed instanceof String) {
                     JSONObject state=new JSONObject((String)parsed);
                     if (!state.optBoolean("feed")) message="Feed filtering is inactive on this page. Messages are not inspected.";
-                    else message="Filter loaded\nPosts or suggestions hidden on this page: "+state.optInt("hiddenAds")
+                    else message="Filter "+state.optString("version","unknown")+" loaded\nPosts or suggestions hidden on this page: "+state.optInt("hiddenAds")
                         +"\nPost containers detected: "+state.optInt("containers")
+                        +"\nPosts using local identity: "+state.optInt("linkless")
+                        +"\nSession posts counted: "+seen.size()
                         +"\n\n"+(state.optInt("containers")==0
                             ? "Post counting is unavailable in this layout. Native time limits remain active."
-                            : "Post counting requires supported links within these containers. Ad filtering is best effort.");
+                            : "Linkless posts use opaque local identities; anonymous cards may be recounted after a reload. Ad filtering is best effort.");
                 }
             } catch(Exception ignored) { }
             new AlertDialog.Builder(this).setTitle("Filter status").setMessage(message)
