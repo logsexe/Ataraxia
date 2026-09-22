@@ -30,7 +30,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     private FrameLayout content;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean active, browsing, waitingSnapshot;
-    private long lastTick;
+    private long lastTick, lastSnapshotPoll;
     private String script;
     private ValueCallback<Uri[]> fileCallback;
     private final java.util.concurrent.ExecutorService backupIO=java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -52,7 +52,10 @@ public class MainActivity extends androidx.activity.ComponentActivity {
                         .putLong("sessionMs", prefs.getLong("sessionMs",0) + delta).apply();
                     if (limited()) showLimit();
                 }
-                if (browsing && !waitingSnapshot && Policy.feed(url)) pollPosts();
+                if (browsing && !waitingSnapshot && Policy.feed(url) && now-lastSnapshotPoll>=2500) {
+                    lastSnapshotPoll=now;
+                    pollPosts();
+                }
             }
             String nextSummary = summary();
             composeTopBar.update(focused()?"FOCUSED":"BALANCED",nextSummary);
@@ -94,15 +97,17 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         scroll.addView(panel); content.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
         panel.setTag(scroll);
         composeBottomBar = new AtaraxiaBottomBarView(this);
-        composeBottomBar.setActions(()->showHome(),()->navigate(BASE+"/direct/inbox/"),()->openFeed(),()->settings());
+        composeBottomBar.setActions(()->navigate(BASE+"/direct/inbox/"),()->openFeed(),()->settings());
         root.addView(composeBottomBar,new LinearLayout.LayoutParams(-1,dp(80)));
         setContentView(root);
         configureWeb();
-        showLanding();
+        if (prefs.getBoolean("philosophyIntro",false)) navigate(BASE+"/direct/inbox/");
+        else showLanding();
     }
     private void configureWeb() {
         WebSettings s = web.getSettings();
-        s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true);
+        s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true); s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         s.setAllowFileAccess(false); s.setAllowContentAccess(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         s.setSafeBrowsingEnabled(true); s.setMediaPlaybackRequiresUserGesture(true);
@@ -208,9 +213,9 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     private void navigate(String url) {
         rollDay(); refreshSession();
         if (!allowNavigation(url)) return;
-        browsing=true; ((View)panel.getTag()).setVisibility(View.GONE);
+        browsing=true; showChrome(true); ((View)panel.getTag()).setVisibility(View.GONE);
         selectNav(Policy.exempt(url)?"Inbox":"Feed");
-        web.setAlpha(0f);web.setVisibility(View.VISIBLE);web.onResume();lastTick=SystemClock.elapsedRealtime();web.loadUrl(url);
+        web.setAlpha(0f);web.setVisibility(View.VISIBLE);web.onResume();lastTick=SystemClock.elapsedRealtime();lastSnapshotPoll=0;web.loadUrl(url);
         web.animate().alpha(1f).setDuration(180).start();
     }
     private boolean focused() { return prefs.getBoolean("focused",true); }
@@ -275,24 +280,17 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         composeTopBar.update(focused()?"FOCUSED":"BALANCED",summary());
     }
     private void showLanding() {
-        basePanel();selectNav("Home");panel.setPadding(0,0,0,0);
+        basePanel();showChrome(false);selectNav("Inbox");panel.setPadding(0,0,0,0);
         AtaraxiaLandingView landing=new AtaraxiaLandingView(this);
-        landing.setActions(()->{if(prefs.getBoolean("philosophyIntro",false))showHome();else showPhilosophy(0,true);},
-            ()->showPhilosophy(0,!prefs.getBoolean("philosophyIntro",false)));
+        landing.setActions(()->showPhilosophy(0,true),()->showPhilosophy(0,true));
         panel.addView(landing,new LinearLayout.LayoutParams(-1,-2));
     }
     private void showHome() {
-        basePanel();selectNav("Home");panel.setPadding(0,0,0,0);
-        int daily=prefs.getInt("dailyMinutes",15);
-        float progress=Math.min(1f,prefs.getLong("dailyMs",0)/(daily*60000f));
-        AtaraxiaHomeView home=new AtaraxiaHomeView(this);
-        home.update(focused(),summary(),progress,prefs.getInt("postLimit",10),
-            prefs.getInt("sessionMinutes",5),daily);
-        home.setActions(()->navigate(BASE+"/direct/inbox/"),()->openFeed(),()->chooseMode(),()->showPhilosophy(0,false));
-        panel.addView(home,new LinearLayout.LayoutParams(-1,-2));
+        if (!prefs.getBoolean("philosophyIntro",false)) showLanding();
+        else navigate(BASE+"/direct/inbox/");
     }
     private void showPhilosophy(int page,boolean onboarding) {
-        basePanel();selectNav("Home");panel.setPadding(0,0,0,0);
+        basePanel();showChrome(!onboarding);selectNav(onboarding?"Inbox":"Settings");panel.setPadding(0,0,0,0);
         AtaraxiaPhilosophyView philosophy=new AtaraxiaPhilosophyView(this);
         philosophy.update(page,onboarding);
         philosophy.setActions(
@@ -305,21 +303,23 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     private void finishPhilosophy(boolean focusedMode,boolean onboarding) {
         prefs.edit().putBoolean("focused",focusedMode).putBoolean("philosophyIntro",true).putBoolean("intro",true).apply();
         web.stopLoading();
-        showHome();
-        if(onboarding) Toast.makeText(this,focusedMode?"Focused mode selected.":"Balanced mode selected.",Toast.LENGTH_SHORT).show();
+        if(onboarding) {
+            Toast.makeText(this,focusedMode?"Focused mode selected.":"Balanced mode selected.",Toast.LENGTH_SHORT).show();
+            navigate(BASE+"/direct/inbox/");
+        } else settings();
     }
     private void showLimit() {
         if(prefs.getLong("cooldown",0)==0) prefs.edit().putLong("cooldown",System.currentTimeMillis()+10*60000L).apply();
-        basePanel();selectNav("Home");panel.setPadding(0,0,0,0);
+        basePanel();showChrome(true);selectNav("Inbox");panel.setPadding(0,0,0,0);
         boolean daily=prefs.getLong("dailyMs",0)>=prefs.getInt("dailyMinutes",15)*60000L;
         AtaraxiaEndView end=new AtaraxiaEndView(this);
         end.update(daily);
-        end.setActions(()->navigate(BASE+"/direct/inbox/"),()->showHome());
+        end.setActions(()->navigate(BASE+"/direct/inbox/"),()->navigate(BASE+"/direct/inbox/"));
         panel.addView(end,new LinearLayout.LayoutParams(-1,-2));
     }
-    private void showError(String message) { basePanel(); panel.addView(text("Connection paused",28,INK)); panel.addView(text(message,17,MUTED)); button(panel,"Try inbox again",()->navigate(BASE+"/direct/inbox/")); }
+    private void showError(String message) { basePanel(); showChrome(true); selectNav("Inbox"); panel.addView(text("Connection paused",28,INK)); panel.addView(text(message,17,MUTED)); button(panel,"Try inbox again",()->navigate(BASE+"/direct/inbox/")); }
     private void settings() {
-        basePanel();selectNav("Settings");panel.setPadding(0,0,0,0);
+        basePanel();showChrome(true);selectNav("Settings");panel.setPadding(0,0,0,0);
         AtaraxiaSettingsView settings=new AtaraxiaSettingsView(this);
         settings.update(focused(),prefs.getInt("postLimit",10),prefs.getInt("sessionMinutes",5),prefs.getInt("dailyMinutes",15));
         settings.setActions(
@@ -457,6 +457,11 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     private void stepDots(int page){LinearLayout dots=new LinearLayout(this);dots.setGravity(Gravity.CENTER);for(int i=0;i<3;i++){View dot=new View(this);dot.setBackground(surface(i==page?ACCENT_STRONG:LINE,8,0,0));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(dp(i==page?28:8),dp(8));p.setMargins(dp(4),0,dp(4),dp(18));dots.addView(dot,p);}panel.addView(dots);}
     private void button(LinearLayout parent,String label,Runnable action){TextView b=text(label,15,BG);b.setGravity(Gravity.CENTER);b.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));b.setPadding(dp(18),0,dp(18),0);b.setBackground(ripple(0x33000000,surface(ACCENT,18,0,0)));b.setClickable(true);b.setFocusable(true);b.setOnClickListener(v->{v.animate().scaleX(.98f).scaleY(.98f).setDuration(70).withEndAction(()->{v.animate().scaleX(1f).scaleY(1f).setDuration(110).start();action.run();}).start();});LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(56));p.bottomMargin=dp(10);parent.addView(b,p);}
     private void secondaryButton(LinearLayout parent,String label,Runnable action){TextView b=text(label,14,INK);b.setGravity(Gravity.CENTER);b.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));b.setBackground(ripple(0x227fd29b,surface(SURFACE,17,LINE,1)));b.setClickable(true);b.setFocusable(true);b.setOnClickListener(v->action.run());LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(parent==panel?-1:0,dp(52),parent==panel?0:1);p.setMargins(dp(3),0,dp(3),dp(10));parent.addView(b,p);}
+    private void showChrome(boolean visible) {
+        int state=visible?View.VISIBLE:View.GONE;
+        composeTopBar.setVisibility(state);
+        composeBottomBar.setVisibility(state);
+    }
     private void selectNav(String label){if(composeBottomBar!=null)composeBottomBar.select(label);}
     @Override protected void onResume(){super.onResume();active=true;lastTick=SystemClock.elapsedRealtime();if(web!=null && browsing)web.onResume();handler.post(ticker);}
     @Override protected void onPause(){active=false;handler.removeCallbacks(ticker);if(web!=null)web.onPause();super.onPause();}
