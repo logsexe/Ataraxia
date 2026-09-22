@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -29,9 +30,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -176,6 +174,21 @@ class AtaraxiaLandingView @JvmOverloads constructor(
                 fontSize = 17.sp,
                 lineHeight = 26.sp
             )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Eyebrow("ATARAXIA · ἀταραξία")
+                    Text(
+                        text = "A calm, untroubled mind—freedom from unnecessary disturbance.",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 16.sp,
+                        lineHeight = 23.sp
+                    )
+                }
+            }
             Spacer(Modifier.height(6.dp))
             Principle("ATTENTION", "Notice what is asking for your mind.")
             Principle("INTENTION", "Enter for connection, not compulsion.")
@@ -373,43 +386,48 @@ class AtaraxiaBottomBarView @JvmOverloads constructor(
             NavItem("Settings", Icons.Filled.Settings, settingsAction)
         )
         Surface(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
             shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
         ) {
-            NavigationBar(
-                containerColor = Color.Transparent,
-                tonalElevation = 0.dp,
-                modifier = Modifier.height(72.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 destinations.forEach { destination ->
                     val active = selected == destination.label
-                    val iconColor by animateColorAsState(
+                    val itemColor by animateColorAsState(
                         if (active) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                         label = "navigationColor"
                     )
-                    NavigationBarItem(
-                        selected = active,
-                        onClick = { destination.action?.run() },
-                        icon = {
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                            .clickable { destination.action?.run() },
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (active) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                        ) {
                             Icon(
                                 imageVector = destination.icon,
                                 contentDescription = destination.label,
-                                tint = iconColor
+                                modifier = Modifier.padding(horizontal = 13.dp, vertical = 6.dp).size(22.dp),
+                                tint = itemColor
                             )
-                        },
-                        label = { Text(destination.label, fontSize = 11.sp, maxLines = 1) },
-                        alwaysShowLabel = true,
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            destination.label,
+                            color = itemColor,
+                            fontSize = 11.sp,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1
                         )
-                    )
+                    }
                 }
             }
         }
