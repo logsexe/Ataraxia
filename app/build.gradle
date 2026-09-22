@@ -12,8 +12,8 @@ android {
         applicationId 'app.ataraxia.social'
         minSdk 30
         targetSdk 35
-        versionCode 14
-        versionName '0.2.0-alpha04'
+        versionCode 15
+        versionName '0.2.0-alpha05'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = '17' }
