@@ -80,3 +80,8 @@ assert.ok(!f.attrs.has('data-quiet-focused'));
 f.state.location.pathname='/';f.state.__ataraxiaStillness.configure({focused:false});
 assert.ok(!f.attrs.has('data-quiet-focused'));
 console.log('PASS: Focused feed shield, no feed counting while focused, inbox access and Balanced restoration');
+
+assert.match(script, /addEventListener\('scroll', queueCount/, 'scroll work is coalesced through requestAnimationFrame');
+assert.doesNotMatch(script, /data-quiet-hidden="true"\]\{display:none/, 'filtered posts preserve layout height');
+assert.match(script, /attributeFilter:\['href','aria-label'\]/, 'lazy image changes do not cause full rescans');
+console.log('PASS: performance contract — one geometry pass per frame and layout-stable filtering');
