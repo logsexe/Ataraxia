@@ -16,11 +16,13 @@ for token in ["Boundaries,\\nchosen by you.","Free forever Â· No developer ads Â
  assert token in surfaces,token
 for token in [
  'if (prefs.getBoolean("philosophyIntro",false)) navigate(BASE+"/direct/inbox/");',
- "else showLanding();","showChrome(false)","now-lastSnapshotPoll>=2500",
+ "else showLanding();","showChrome(false)","now-lastSnapshotPoll>=SNAPSHOT_POLL_MS",
  "setOverScrollMode(View.OVER_SCROLL_NEVER)","new LinearLayout.LayoutParams(-1,dp(88))",
  'composeBottomBar.setActions(()->navigate(BASE+"/direct/inbox/"),()->openFeed(),()->settings())',
 ]:
  assert token in activity,token
+assert "SNAPSHOT_POLL_MS = 400L" in activity
+assert "TICK_MS = 250L" in activity
 assert "NavigationBarItem(" not in chrome
 assert 'NavItem("Home"' not in chrome
 assert chrome.count('NavItem("')==3

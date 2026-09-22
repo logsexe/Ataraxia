@@ -7,6 +7,7 @@
   let hiddenAds = 0;
   let scheduled = false;
   let countScheduled = false;
+  let countFramesRemaining = 0;
   let previousY = null;
   let previousBounds = new WeakMap();
   let limit = 500;
@@ -24,7 +25,7 @@
   const isFeed = () => location.pathname === '/';
   const labels = new Set(['ad', 'advertisement', 'sponsored', 'geborg', 'geborgde', 'suggested for you', 'voorgestel vir jou', 'follow']);
   const style = document.createElement('style');
-  style.textContent = '[data-quiet-hidden="true"]{visibility:hidden!important;pointer-events:none!important}[data-quiet-home-hidden="true"]{display:none!important}html[data-quiet-focused] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-focused]::after{content:"Focused mode. Open Inbox or Home below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}html{scroll-behavior:auto!important}html[data-quiet-capped] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-capped]::after{content:"Session post limit reached. Use Inbox below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}';
+  style.textContent = '[data-quiet-hidden="true"]{display:none!important}[data-quiet-home-hidden="true"]{display:none!important}html[data-quiet-focused] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-focused]::after{content:"Focused mode. Open Inbox or Home below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}html{scroll-behavior:auto!important}html[data-quiet-capped] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-capped]::after{content:"Session post limit reached. Use Inbox below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}';
   (document.head || document.documentElement).appendChild(style);
   const hide = el => { if (el.dataset.quietHidden !== 'true') el.dataset.quietHidden = 'true'; };
   function scan() {
@@ -54,7 +55,6 @@
       scrollers.set(article,scroller);
       // Instagram can reuse a post container for different content.
       const wasHidden = article.dataset.quietHidden === 'true';
-      if (wasHidden) delete article.dataset.quietHidden;
       let sponsored = false;
       // Match metadata before the main media, never arbitrary caption text.
       const media = article.querySelector('video') || Array.from(article.querySelectorAll('img')).find(img =>
@@ -70,10 +70,16 @@
         const aria = normalise(el.getAttribute('aria-label'));
         if (labels.has(text) || labels.has(aria)) {
           const rect = el.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) { sponsored = true; break; }
+          // A previously filtered container has no geometry because it is collapsed.
+          // Its metadata is still safe to inspect so recycled containers can be restored.
+          if (wasHidden || (rect.width > 0 && rect.height > 0)) { sponsored = true; break; }
         }
       }
-      if (sponsored && article.dataset.quietHidden !== 'true') { hide(article); if (!wasHidden) hiddenAds++; }
+      if (sponsored) {
+        if (!wasHidden) { hide(article); hiddenAds++; }
+      } else if (wasHidden) {
+        delete article.dataset.quietHidden;
+      }
     }
     dirty.clear();
     countPosts();
@@ -115,12 +121,16 @@
   }
   function queueScan() { if (!scheduled) { scheduled = true; requestAnimationFrame(scan); } }
   function queueCount() {
+    // Keep sampling after the event itself: Android WebView can deliver sparse
+    // scroll callbacks during a fling and Instagram can recycle cards mid-flight.
+    countFramesRemaining = Math.max(countFramesRemaining, 8);
     if (countScheduled) return;
     countScheduled = true;
-    requestAnimationFrame(() => {
-      if (!countScheduled) return;
-      countScheduled = false;
+    requestAnimationFrame(function sampleFling() {
       countPosts();
+      countFramesRemaining--;
+      if (countFramesRemaining > 0) requestAnimationFrame(sampleFling);
+      else countScheduled = false;
     });
   }
   new MutationObserver(records => {
@@ -161,7 +171,7 @@
     },
     snapshot: () => {
       // Native snapshots may arrive between the scroll event and its animation frame.
-      if (countScheduled) { countScheduled = false; countPosts(); }
+      if (countScheduled) countPosts();
       return { ids: isFeed() ? Array.from(seen).slice(0,500) : [], hiddenAds, feed:isFeed(), containers:isFeed() ? articles.length : 0 };
     }
   };
