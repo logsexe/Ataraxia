@@ -19,7 +19,7 @@ import java.util.*;
 /** Small, dependency-free Android pilot. All browsing happens in this app's WebView. */
 public class MainActivity extends androidx.activity.ComponentActivity {
     private static final String BASE = "https://www.instagram.com";
-    private static final long TICK_MS = 250L, SNAPSHOT_POLL_MS = 400L;
+    private static final long TICK_MS = 1000L, SNAPSHOT_POLL_MS = 500L;
     private static final int BG = 0xff0b1411, SURFACE = 0xff111e19, CARD = 0xff182721, CARD_ALT = 0xff20332a;
     private static final int INK = 0xfff3f0e7, MUTED = 0xff9fb1a7, ACCENT = 0xffbce8c9, ACCENT_STRONG = 0xff7fd29b;
     private static final int LINE = 0xff2d4137, DANGER = 0xffffb4a8;
@@ -53,14 +53,22 @@ public class MainActivity extends androidx.activity.ComponentActivity {
                         .putLong("sessionMs", prefs.getLong("sessionMs",0) + delta).apply();
                     if (limited()) showLimit();
                 }
-                if (browsing && !waitingSnapshot && Policy.feed(url) && now-lastSnapshotPoll>=SNAPSHOT_POLL_MS) {
-                    lastSnapshotPoll=now;
-                    pollPosts();
-                }
             }
             String nextSummary = summary();
             composeTopBar.update(focused()?"FOCUSED":"BALANCED",nextSummary);
             handler.postDelayed(this, TICK_MS);
+        }
+    };
+    private final Runnable snapshotter = new Runnable() {
+        public void run() {
+            if (!active) return;
+            long now=SystemClock.elapsedRealtime();
+            String url=web==null?null:web.getUrl();
+            if (browsing && !waitingSnapshot && Policy.feed(url) && now-lastSnapshotPoll>=SNAPSHOT_POLL_MS) {
+                lastSnapshotPoll=now;
+                pollPosts();
+            }
+            handler.postDelayed(this,SNAPSHOT_POLL_MS);
         }
     };
 
@@ -465,8 +473,8 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         composeBottomBar.setVisibility(state);
     }
     private void selectNav(String label){if(composeBottomBar!=null)composeBottomBar.select(label);}
-    @Override protected void onResume(){super.onResume();active=true;lastTick=SystemClock.elapsedRealtime();if(web!=null && browsing)web.onResume();handler.post(ticker);}
-    @Override protected void onPause(){active=false;handler.removeCallbacks(ticker);if(web!=null)web.onPause();super.onPause();}
+    @Override protected void onResume(){super.onResume();active=true;lastTick=SystemClock.elapsedRealtime();if(web!=null && browsing)web.onResume();handler.post(ticker);handler.post(snapshotter);}
+    @Override protected void onPause(){active=false;handler.removeCallbacks(ticker);handler.removeCallbacks(snapshotter);if(web!=null)web.onPause();super.onPause();}
     @Override public void onBackPressed(){
         if (!browsing) { super.onBackPressed(); return; }
         rollDay(); refreshSession();
@@ -481,5 +489,5 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         }
         showHome();
     }
-    @Override protected void onDestroy(){backupIO.shutdownNow();handler.removeCallbacks(ticker);if(fileCallback!=null)fileCallback.onReceiveValue(null);if(web!=null){content.removeView(web);web.destroy();}super.onDestroy();}
+    @Override protected void onDestroy(){backupIO.shutdownNow();handler.removeCallbacks(ticker);handler.removeCallbacks(snapshotter);if(fileCallback!=null)fileCallback.onReceiveValue(null);if(web!=null){content.removeView(web);web.destroy();}super.onDestroy();}
 }

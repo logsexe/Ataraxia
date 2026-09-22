@@ -6,6 +6,7 @@
   const seen = new Set();
   let hiddenAds = 0;
   let scheduled = false;
+  let scheduledFull = false;
   let countScheduled = false;
   let countFramesRemaining = 0;
   let previousY = null;
@@ -28,9 +29,11 @@
   style.textContent = '[data-quiet-hidden="true"]{display:none!important}[data-quiet-home-hidden="true"]{display:none!important}html[data-quiet-focused] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-focused]::after{content:"Focused mode. Open Inbox or Home below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}html{scroll-behavior:auto!important}html[data-quiet-capped] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-capped]::after{content:"Session post limit reached. Use Inbox below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}';
   (document.head || document.documentElement).appendChild(style);
   const hide = el => { if (el.dataset.quietHidden !== 'true') el.dataset.quietHidden = 'true'; };
-  function scan() {
-    scheduled = false;
-    for (const a of document.querySelectorAll('a[href]')) {
+  function scanLinks(root) {
+    const links = [];
+    if (root && root.nodeType === 1 && root.matches && root.matches('a[href]')) links.push(root);
+    if (root && root.querySelectorAll) links.push(...root.querySelectorAll('a[href]'));
+    for (const a of links) {
       try {
         const u = new URL(a.getAttribute('href'), location.href);
         if (/(^|\.)instagram\.com$/i.test(u.hostname)) {
@@ -40,10 +43,41 @@
         }
       } catch (_) { }
     }
+  }
+  function registerArticles(root) {
+    const found = [];
+    if (root && root.nodeType === 1 && root.matches && root.matches('article,[role="article"]')) found.push(root);
+    if (root && root.querySelectorAll) found.push(...root.querySelectorAll('article,[role="article"]'));
+    for (const article of found) {
+      if (!articles.includes(article)) articles.push(article);
+      dirty.add(article);
+    }
+  }
+  function collapseArticle(article, scroller) {
+    const before = article.getBoundingClientRect();
+    const clip = scroller ? scroller.getBoundingClientRect() : null;
+    const viewTop = clip ? Math.max(0,clip.top) : 80;
+    const oldScroll = scroller ? scroller.scrollTop : window.scrollY;
+    hide(article);
+    // If a late label filters a card already above the viewport, preserve the
+    // current visual anchor instead of letting the browser jump the feed.
+    if (before.height > 0 && before.bottom <= viewTop) {
+      const next = Math.max(0,oldScroll-before.height);
+      if (scroller) scroller.scrollTop=next;
+      else window.scrollTo(window.scrollX,next);
+    }
+  }
+  function scan(full) {
+    scheduled = false;
+    if (full) {
+      scanLinks(document);
+      registerArticles(document);
+    }
     // Never inspect message bodies: sponsored/suggestion filtering is restricted to the home feed.
     if (!isFeed()) { previousY = null; previousBounds = new WeakMap(); updateCap(); return; }
-    articles = Array.from(document.querySelectorAll('article,[role="article"]'));
-    for (const article of articles) {
+    articles = articles.filter(article => article.isConnected !== false);
+    const candidates = full ? articles : Array.from(dirty);
+    for (const article of candidates) {
       if (!dirty.has(article) && checked.has(article)) continue;
       checked.add(article);
       let scroller = null;
@@ -76,7 +110,7 @@
         }
       }
       if (sponsored) {
-        if (!wasHidden) { hide(article); hiddenAds++; }
+        if (!wasHidden) { collapseArticle(article,scroller); hiddenAds++; }
       } else if (wasHidden) {
         delete article.dataset.quietHidden;
       }
@@ -119,11 +153,21 @@
     }
     updateCap();
   }
-  function queueScan() { if (!scheduled) { scheduled = true; requestAnimationFrame(scan); } }
+  function queueScan(full) {
+    scheduledFull = scheduledFull || full === true;
+    if (!scheduled) {
+      scheduled = true;
+      requestAnimationFrame(() => {
+        const runFull=scheduledFull;
+        scheduledFull=false;
+        scan(runFull);
+      });
+    }
+  }
   function queueCount() {
     // Keep sampling after the event itself: Android WebView can deliver sparse
     // scroll callbacks during a fling and Instagram can recycle cards mid-flight.
-    countFramesRemaining = Math.max(countFramesRemaining, 8);
+    countFramesRemaining = Math.max(countFramesRemaining, 2);
     if (countScheduled) return;
     countScheduled = true;
     requestAnimationFrame(function sampleFling() {
@@ -138,16 +182,21 @@
       const el = record.target.nodeType === 1 ? record.target : record.target.parentElement;
       const article = el && el.closest('article,[role="article"]');
       if (article) dirty.add(article);
+      if (record.type === 'attributes' && el) scanLinks(el);
+      for (const node of record.addedNodes || []) {
+        scanLinks(node);
+        registerArticles(node);
+      }
     }
-    queueScan();
+    queueScan(false);
   }).observe(document.documentElement, {subtree:true, childList:true, attributes:true, characterData:true, attributeFilter:['href','aria-label']});
   // Coalesce high-frequency scroll events into one geometry pass per rendered frame.
   addEventListener('scroll', queueCount, {passive:true, capture:true});
-  addEventListener('popstate', () => { updateCap(); queueScan(); });
+  addEventListener('popstate', () => { updateCap(); queueScan(true); });
   for (const method of ['pushState','replaceState']) {
     if (typeof history !== 'undefined') {
       const original = history[method];
-      history[method] = function(...args) { const result=original.apply(this,args); updateCap(); queueScan(); return result; };
+      history[method] = function(...args) { const result=original.apply(this,args); updateCap(); queueScan(true); return result; };
     }
   }
   document.addEventListener('click', e => {
@@ -161,13 +210,13 @@
     } catch (_) { }
   }, true);
   window.__ataraxiaStillness = {
-    scan: () => { for (const article of articles) dirty.add(article); scan(); },
+    scan: () => { for (const article of articles) dirty.add(article); scan(true); },
     configure: config => {
       if (typeof config.focused === 'boolean') focused = config.focused;
       if (config.reset === true) { seen.clear(); previousY = null; previousBounds = new WeakMap(); }
       limit = Math.max(1, Math.min(500, Number(config.limit) || 10));
       for (const id of (config.ids || [])) if (/^[A-Za-z0-9_-]{1,80}$/.test(id)) seen.add(id);
-      scan();
+      scan(true);
     },
     snapshot: () => {
       // Native snapshots may arrive between the scroll event and its animation frame.
@@ -175,5 +224,5 @@
       return { ids: isFeed() ? Array.from(seen).slice(0,500) : [], hiddenAds, feed:isFeed(), containers:isFeed() ? articles.length : 0 };
     }
   };
-  scan();
+  scan(true);
 })();

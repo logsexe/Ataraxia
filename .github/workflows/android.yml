@@ -63,25 +63,26 @@ jobs:
         run: |
           mkdir -p dist
           cp build/privacy-review.json dist/privacy-review.json
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Ataraxia-0.2.0-alpha07.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Ataraxia-0.2.0-alpha09.apk
           sdk_tools="$ANDROID_HOME/build-tools/35.0.0"
-          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Ataraxia-0.2.0-alpha07.apk > dist/SIGNATURE.txt
-          "$sdk_tools/zipalign" -c -p 4 dist/Ataraxia-0.2.0-alpha07.apk
-          "$sdk_tools/aapt" dump badging dist/Ataraxia-0.2.0-alpha07.apk > dist/manifest.txt
+          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Ataraxia-0.2.0-alpha09.apk > dist/SIGNATURE.txt
+          "$sdk_tools/zipalign" -c -p 4 dist/Ataraxia-0.2.0-alpha09.apk
+          "$sdk_tools/aapt" dump badging dist/Ataraxia-0.2.0-alpha09.apk > dist/manifest.txt
           python3 - <<'PY'
           from pathlib import Path
           text = Path('dist/manifest.txt').read_text()
-          assert "package: name='app.ataraxia.social' versionCode='17' versionName='0.2.0-alpha07'" in text
+          assert "package: name='app.ataraxia.social' versionCode='19' versionName='0.2.0-alpha09'" in text
           permissions = [line for line in text.splitlines() if line.startswith('uses-permission:')]
           assert permissions == ["uses-permission: name='android.permission.INTERNET'"], permissions
           assert 'application-debuggable' not in text
           print('Verified identity, version, Internet-only permissions and non-debuggable manifest')
           PY
           cd dist
-          sha256sum Ataraxia-0.2.0-alpha07.apk > SHA256SUMS.txt
+          sha256sum Ataraxia-0.2.0-alpha09.apk > SHA256SUMS.txt
       - name: Upload verified pilot APK
         uses: actions/upload-artifact@v4
         with:
-          name: Ataraxia-0.2.0-alpha07
+          name: Ataraxia-0.2.0-alpha09
           path: dist/*
           if-no-files-found: error
+

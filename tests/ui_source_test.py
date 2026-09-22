@@ -21,8 +21,10 @@ for token in [
  'composeBottomBar.setActions(()->navigate(BASE+"/direct/inbox/"),()->openFeed(),()->settings())',
 ]:
  assert token in activity,token
-assert "SNAPSHOT_POLL_MS = 400L" in activity
-assert "TICK_MS = 250L" in activity
+assert "SNAPSHOT_POLL_MS = 500L" in activity
+assert "TICK_MS = 1000L" in activity
+assert "handler.post(snapshotter)" in activity
+assert "handler.removeCallbacks(snapshotter)" in activity
 assert "NavigationBarItem(" not in chrome
 assert 'NavItem("Home"' not in chrome
 assert chrome.count('NavItem("')==3

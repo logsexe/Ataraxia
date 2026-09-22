@@ -82,7 +82,9 @@ assert.ok(!f.attrs.has('data-quiet-focused'));
 console.log('PASS: Focused feed shield, no feed counting while focused, inbox access and Balanced restoration');
 
 assert.match(script, /addEventListener\('scroll', queueCount/, 'scroll work is sampled through requestAnimationFrame');
-assert.match(script, /countFramesRemaining = Math\.max\(countFramesRemaining, 8\)/, 'a fling is sampled across multiple rendered frames');
+assert.match(script, /countFramesRemaining = Math\.max\(countFramesRemaining, 2\)/, 'a fling gets one tail sample without an eight-frame geometry sweep');
 assert.match(script, /data-quiet-hidden="true"\]\{display:none/, 'filtered posts collapse without leaving dead space');
+assert.match(script, /function collapseArticle/, 'late filtering preserves the scroll anchor for cards above the viewport');
+assert.doesNotMatch(script, /function scan\(\) \{[\s\S]*document\.querySelectorAll\('a\[href\]'\)/, 'ordinary mutation scans never enumerate every page link');
 assert.match(script, /attributeFilter:\['href','aria-label'\]/, 'lazy image changes do not cause full rescans');
-console.log('PASS: performance contract — fling-frame sampling and collapsed filtering');
+console.log('PASS: performance contract — incremental mutation scans, short fling tail and anchored filtering');
