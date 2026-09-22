@@ -6,6 +6,7 @@
   const seen = new Set();
   let hiddenAds = 0;
   let scheduled = false;
+  let countScheduled = false;
   let previousY = null;
   let previousBounds = new WeakMap();
   let limit = 500;
@@ -23,7 +24,7 @@
   const isFeed = () => location.pathname === '/';
   const labels = new Set(['ad', 'advertisement', 'sponsored', 'geborg', 'geborgde', 'suggested for you', 'voorgestel vir jou', 'follow']);
   const style = document.createElement('style');
-  style.textContent = '[data-quiet-hidden="true"]{display:none!important}[data-quiet-home-hidden="true"]{display:none!important}html[data-quiet-focused] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-focused]::after{content:"Focused mode. Open Inbox or Home below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}html{scroll-behavior:auto!important}html[data-quiet-capped] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-capped]::after{content:"Session post limit reached. Use Inbox below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}';
+  style.textContent = '[data-quiet-hidden="true"]{visibility:hidden!important;pointer-events:none!important}[data-quiet-home-hidden="true"]{display:none!important}html[data-quiet-focused] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-focused]::after{content:"Focused mode. Open Inbox or Home below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}html{scroll-behavior:auto!important}html[data-quiet-capped] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-capped]::after{content:"Session post limit reached. Use Inbox below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}';
   (document.head || document.documentElement).appendChild(style);
   const hide = el => { if (el.dataset.quietHidden !== 'true') el.dataset.quietHidden = 'true'; };
   function scan() {
@@ -113,6 +114,14 @@
     updateCap();
   }
   function queueScan() { if (!scheduled) { scheduled = true; requestAnimationFrame(scan); } }
+  function queueCount() {
+    if (countScheduled) return;
+    countScheduled = true;
+    requestAnimationFrame(() => {
+      countScheduled = false;
+      countPosts();
+    });
+  }
   new MutationObserver(records => {
     for (const record of records) {
       const el = record.target.nodeType === 1 ? record.target : record.target.parentElement;
@@ -120,9 +129,9 @@
       if (article) dirty.add(article);
     }
     queueScan();
-  }).observe(document.documentElement, {subtree:true, childList:true, attributes:true, characterData:true, attributeFilter:['href','aria-label','src','alt']});
-  // Read geometry on the scroll event: a deferred frame can lose a fast swipe.
-  addEventListener('scroll', countPosts, {passive:true, capture:true});
+  }).observe(document.documentElement, {subtree:true, childList:true, attributes:true, characterData:true, attributeFilter:['href','aria-label']});
+  // Coalesce high-frequency scroll events into one geometry pass per rendered frame.
+  addEventListener('scroll', queueCount, {passive:true, capture:true});
   addEventListener('popstate', () => { updateCap(); queueScan(); });
   for (const method of ['pushState','replaceState']) {
     if (typeof history !== 'undefined') {
