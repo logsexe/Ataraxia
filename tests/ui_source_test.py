@@ -10,17 +10,18 @@ for token in ["AtaraxiaLandingView","AtaraxiaSettingsView","AtaraxiaPhilosophyVi
  assert token in activity+chrome+surfaces,token
 for token in ["darkColorScheme(","Typography(","FontFamily.Serif","FontFamily.SansSerif","QuickMotion = 180","GentleMotion = 260","RoundedCornerShape(30.dp)"]:
  assert token in design,token
-for token in ["You have about\\n4,000 weeks.","Enter with intention","Following feed","NavigationBar("]:
+for token in ["You have about\\n4,000 weeks.","Enter with intention","Following feed","ATARAXIA · ἀταραξία","A calm, untroubled mind—freedom from unnecessary disturbance.","fillMaxHeight()","Arrangement.Center"]:
  assert token in chrome,token
 for token in ["Boundaries,\\nchosen by you.","Free forever · No developer ads · No analytics","Enough\\nfor now.","AnimatedContent("]:
  assert token in surfaces,token
 for token in [
  'if (prefs.getBoolean("philosophyIntro",false)) navigate(BASE+"/direct/inbox/");',
  "else showLanding();","showChrome(false)","now-lastSnapshotPoll>=2500",
- "setOverScrollMode(View.OVER_SCROLL_NEVER)",
+ "setOverScrollMode(View.OVER_SCROLL_NEVER)","new LinearLayout.LayoutParams(-1,dp(88))",
  'composeBottomBar.setActions(()->navigate(BASE+"/direct/inbox/"),()->openFeed(),()->settings())',
 ]:
  assert token in activity,token
+assert "NavigationBarItem(" not in chrome
 assert 'NavItem("Home"' not in chrome
 assert chrome.count('NavItem("')==3
 assert "verticalScroll(" not in surfaces, "Compose surfaces already live inside the activity ScrollView"
