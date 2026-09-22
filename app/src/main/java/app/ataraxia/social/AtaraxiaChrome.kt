@@ -350,14 +350,12 @@ class AtaraxiaBottomBarView @JvmOverloads constructor(
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : AbstractComposeView(context, attrs, defStyleAttr) {
-    private var selected by mutableStateOf("Home")
-    private var homeAction: Runnable? = null
+    private var selected by mutableStateOf("Inbox")
     private var inboxAction: Runnable? = null
     private var feedAction: Runnable? = null
     private var settingsAction: Runnable? = null
 
-    fun setActions(home: Runnable, inbox: Runnable, feed: Runnable, settings: Runnable) {
-        homeAction = home
+    fun setActions(inbox: Runnable, feed: Runnable, settings: Runnable) {
         inboxAction = inbox
         feedAction = feed
         settingsAction = settings
@@ -370,7 +368,6 @@ class AtaraxiaBottomBarView @JvmOverloads constructor(
     @Composable
     override fun Content() = AtaraxiaTheme {
         val destinations = listOf(
-            NavItem("Home", Icons.Filled.Home, homeAction),
             NavItem("Inbox", Icons.Filled.Email, inboxAction),
             NavItem("Feed", Icons.Filled.List, feedAction),
             NavItem("Settings", Icons.Filled.Settings, settingsAction)
