@@ -118,6 +118,7 @@
     if (countScheduled) return;
     countScheduled = true;
     requestAnimationFrame(() => {
+      if (!countScheduled) return;
       countScheduled = false;
       countPosts();
     });
@@ -158,7 +159,11 @@
       for (const id of (config.ids || [])) if (/^[A-Za-z0-9_-]{1,80}$/.test(id)) seen.add(id);
       scan();
     },
-    snapshot: () => ({ ids: isFeed() ? Array.from(seen).slice(0,500) : [], hiddenAds, feed:isFeed(), containers:isFeed() ? articles.length : 0 })
+    snapshot: () => {
+      // Native snapshots may arrive between the scroll event and its animation frame.
+      if (countScheduled) { countScheduled = false; countPosts(); }
+      return { ids: isFeed() ? Array.from(seen).slice(0,500) : [], hiddenAds, feed:isFeed(), containers:isFeed() ? articles.length : 0 };
+    }
   };
   scan();
 })();
