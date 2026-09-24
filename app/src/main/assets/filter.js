@@ -183,7 +183,10 @@
       // Read/classify metadata first, then batch all layout writes.
       const decisions = [];
       for (const record of dirty) {
-        const media = mainMedia(record.el);
+        // Percentage widths stop resolving to pixels under display:none. Keep
+        // the known media boundary while collapsed, until that node is replaced.
+        const media = record.hidden && record.media && record.el.contains(record.media)
+          ? record.media : mainMedia(record.el);
         record.media=media;
         const hidden = sponsored(record,media);
         decisions.push({record,hidden,root:hidden?collapseRoot(record):null});

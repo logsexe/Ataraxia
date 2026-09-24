@@ -127,6 +127,15 @@ const settle = page => page.waitForTimeout(220);
       assert.equal(await page.locator('#modern').isVisible(),false);
       assert.equal(await page.locator('#media').isVisible(),true);
     });
+  await check('collapsed relative-width media never makes an ad reappear on metadata updates',
+    '<main><div id="relative-slot"><article><span id="label">Sponsored</span><img style="width:100%;height:400px"><a href="/p/Relative/">Post</a></article></div></main>',async page=>{
+      assert.equal(await page.locator('#relative-slot').isVisible(),false);
+      await page.evaluate(()=>document.querySelector('#label').textContent='Spon\u200bsored');
+      await settle(page);
+      assert.equal(await page.locator('#relative-slot').isVisible(),false,'an already filtered card reappeared');
+      await page.evaluate(()=>document.querySelector('#label').textContent='Friend');
+      await page.waitForFunction(()=>!document.querySelector('#relative-slot').hasAttribute('data-quiet-hidden'));
+    });
   await check('legacy post limits cannot enable counting or cover the feed',
     Array.from({length:30},(_,i)=>card('Uncapped'+i)).join(''),async page=>{
       await page.evaluate(()=>window.__ataraxiaStillness.configure({focused:false,limit:1,ids:['OldPost']}));

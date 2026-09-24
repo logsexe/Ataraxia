@@ -12,6 +12,8 @@ once. Caption edits and style/class animations do not trigger metadata rescans.
 Exclusive ad wrappers still collapse; surviving content uses native anchoring.
 There are no custom scroll-position writes. Newly discovered ads can remain
 visible until scrolling settles; stability takes priority over mid-fling hiding.
+Collapsed cards retain their media boundary: percentage image widths no longer
+cause an already filtered ad to reappear when its metadata updates.
 
 The header reserves stable space for the timer. Focused/Balanced modes, native
 time limits, Inbox exemptions, route blocking, uploads and settings backup stay.
