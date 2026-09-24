@@ -19,7 +19,7 @@ import java.util.*;
 /** Small, dependency-free Android pilot. All browsing happens in this app's WebView. */
 public class MainActivity extends androidx.activity.ComponentActivity {
     private static final String BASE = "https://www.instagram.com";
-    private static final long TICK_MS = 1000L, SNAPSHOT_POLL_MS = 200L, SNAPSHOT_TIMEOUT_MS = 2000L;
+    private static final long TICK_MS = 1000L;
     private static final int BG = 0xff0b1411, SURFACE = 0xff111e19, CARD = 0xff182721, CARD_ALT = 0xff20332a;
     private static final int INK = 0xfff3f0e7, MUTED = 0xff9fb1a7, ACCENT = 0xffbce8c9, ACCENT_STRONG = 0xff7fd29b;
     private static final int LINE = 0xff2d4137, DANGER = 0xffffb4a8;
@@ -30,13 +30,12 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     private AtaraxiaBottomBarView composeBottomBar;
     private FrameLayout content;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private boolean active, browsing, waitingSnapshot;
-    private long lastTick, lastSnapshotPoll, snapshotStarted, lastFilterRepair;
+    private boolean active, browsing;
+    private long lastTick;
     private String script;
     private ValueCallback<Uri[]> fileCallback;
     private final java.util.concurrent.ExecutorService backupIO=java.util.concurrent.Executors.newSingleThreadExecutor();
-    private final Set<String> seen = new HashSet<>();
-    private int generation, sessionGeneration, snapshotRequest;
+    private int generation;
     private final Runnable ticker = new Runnable() {
         public void run() {
             if (!active) return;
@@ -59,21 +58,6 @@ public class MainActivity extends androidx.activity.ComponentActivity {
             handler.postDelayed(this, TICK_MS);
         }
     };
-    private final Runnable snapshotter = new Runnable() {
-        public void run() {
-            if (!active) return;
-            long now=SystemClock.elapsedRealtime();
-            String url=web==null?null:web.getUrl();
-            if (waitingSnapshot && now-snapshotStarted>=SNAPSHOT_TIMEOUT_MS) {
-                waitingSnapshot=false; snapshotRequest++;
-            }
-            if (browsing && !waitingSnapshot && Policy.internal(url) && Policy.feed(url) && now-lastSnapshotPoll>=SNAPSHOT_POLL_MS) {
-                lastSnapshotPoll=now;
-                pollPosts();
-            }
-            handler.postDelayed(this,SNAPSHOT_POLL_MS);
-        }
-    };
 
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
@@ -81,9 +65,8 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         getWindow().setNavigationBarColor(BG);
         getWindow().setNavigationBarDividerColor(BG);
         prefs = getSharedPreferences("quiet-local", MODE_PRIVATE);
-        prefs.edit().remove("savedProfiles").apply();
+        prefs.edit().remove("savedProfiles").remove("seen").apply();
         rollDay();
-        seen.addAll(prefs.getStringSet("seen", Collections.emptySet()));
         try (InputStream in = getAssets().open("filter.js")) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buffer = new byte[8192]; int count;
@@ -134,7 +117,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
                 return !allowNavigation(request.getUrl().toString());
             }
             @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon) {
-                generation++; waitingSnapshot=false; snapshotRequest++; lastFilterRepair=0;
+                generation++;
                 if (!Policy.internal(url)) { web.stopLoading(); showHome(); return; }
                 if (Policy.blocked(url,focused())) { rejectRoute(); return; }
                 if (!Policy.exempt(url) && limited()) { web.stopLoading(); showLimit(); return; }
@@ -146,7 +129,6 @@ public class MainActivity extends androidx.activity.ComponentActivity {
                 web.evaluateJavascript(configuredFilterScript(), value -> {
                     if (browsing && page==generation) {
                         web.setVisibility(View.VISIBLE);
-                        if (!waitingSnapshot && Policy.internal(web.getUrl()) && Policy.feed(web.getUrl())) pollPosts();
                     }
                 });
                 CookieManager.getInstance().flush();
@@ -228,7 +210,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         if (!allowNavigation(url)) return;
         browsing=true; showChrome(true); ((View)panel.getTag()).setVisibility(View.GONE);
         selectNav(Policy.exempt(url)?"Inbox":"Feed");
-        web.setAlpha(0f);web.setVisibility(View.VISIBLE);web.onResume();lastTick=SystemClock.elapsedRealtime();lastSnapshotPoll=0;web.loadUrl(url);
+        web.setAlpha(0f);web.setVisibility(View.VISIBLE);web.onResume();lastTick=SystemClock.elapsedRealtime();web.loadUrl(url);
         web.animate().alpha(1f).setDuration(180).start();
     }
     private boolean focused() { return prefs.getBoolean("focused",true); }
@@ -237,41 +219,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void openFeed() { if(focused()){rejectRoute();return;} refreshSession(); if(limited()) showLimit(); else navigate(BASE+"/"); }
     private String configuredFilterScript() {
-        // Configuration precedes the script's first count (including Focused mode).
-        return "window.__ataraxiaConfig={focused:" + focused() + ",limit:" + prefs.getInt("postLimit",10)
-            + ",ids:" + new JSONArray(new ArrayList<>(seen)).toString() + "};\n" + script;
-    }
-    private void repairFilter() {
-        long now=SystemClock.elapsedRealtime();
-        if (!browsing || !Policy.internal(web.getUrl()) || !Policy.feed(web.getUrl()) || now-lastFilterRepair<5000L) return;
-        lastFilterRepair=now;
-        web.evaluateJavascript(configuredFilterScript(),null);
-    }
-    private void pollPosts() {
-        waitingSnapshot=true; snapshotStarted=SystemClock.elapsedRealtime();
-        final int page=generation, session=sessionGeneration, request=++snapshotRequest;
-        web.evaluateJavascript("JSON.stringify(window.__ataraxiaStillness ? window.__ataraxiaStillness.snapshot() : null)",raw->{
-            // A late callback must not release or update a newer page's request.
-            if (request!=snapshotRequest) return;
-            waitingSnapshot=false;
-            if(!browsing || page!=generation || session!=sessionGeneration || !Policy.internal(web.getUrl()) || !Policy.feed(web.getUrl())) return;
-            try {
-                Object parsed=new JSONTokener(raw).nextValue();
-                if(!(parsed instanceof String) || "null".equals(parsed)) { repairFilter(); return; }
-                JSONObject obj=new JSONObject((String)parsed);
-                if (!obj.optBoolean("feed")) return;
-                JSONArray ids=obj.optJSONArray("ids");
-                int previousCount=seen.size();
-                if(ids!=null) for(int i=0;i<Math.min(ids.length(),500);i++) {
-                    String id=ids.optString(i); if(id.matches("[A-Za-z0-9_-]{1,80}")) seen.add(id);
-                }
-                if (seen.size()!=previousCount) {
-                    prefs.edit().putStringSet("seen",new HashSet<>(seen)).apply();
-                    composeTopBar.update(focused()?"FOCUSED":"BALANCED",summary());
-                }
-                if(limited()) showLimit();
-            } catch(Exception ignored) { repairFilter(); /* Native time cap remains independent. */ }
-        });
+        return "window.__ataraxiaConfig={focused:" + focused() + "};\n" + script;
     }
     private void rollDay() {
         String today=LocalDate.now().toString();
@@ -282,17 +230,12 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     private void refreshSession() {
         long until=prefs.getLong("cooldown",0);
         if(until>0 && System.currentTimeMillis()>=until) {
-            sessionGeneration++;
-            prefs.edit().putLong("sessionMs",0).putLong("cooldown",0).remove("seen").apply(); seen.clear();
-            // Also reset a live SPA document: returning from Inbox may not reload it.
-            if (web != null && Policy.internal(web.getUrl())) web.evaluateJavascript(
-                "window.__ataraxiaStillness && window.__ataraxiaStillness.configure({reset:true,limit:"
-                    + prefs.getInt("postLimit",10) + ",ids:[]});",null);
+            prefs.edit().putLong("sessionMs",0).putLong("cooldown",0).apply();
         }
     }
     private boolean limited() {
-        return Budget.limited(prefs.getLong("dailyMs",0),prefs.getLong("sessionMs",0),seen.size(),
-            prefs.getInt("dailyMinutes",15),prefs.getInt("sessionMinutes",5),prefs.getInt("postLimit",10),
+        return Budget.limited(prefs.getLong("dailyMs",0),prefs.getLong("sessionMs",0),
+            prefs.getInt("dailyMinutes",15),prefs.getInt("sessionMinutes",5),
             prefs.getLong("cooldown",0),System.currentTimeMillis());
     }
     private String summary() {
@@ -300,10 +243,10 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         long breakSeconds = Math.max(0,(prefs.getLong("cooldown",0)-System.currentTimeMillis()+999)/1000);
         if (remaining == 0) return "Daily allowance reached · Inbox available";
         if (breakSeconds > 0) return "Break: " + (breakSeconds/60) + "m " + (breakSeconds%60) + "s · Inbox available";
-        return (remaining/60000)+"m "+((remaining/1000)%60)+"s left today  ·  "+seen.size()+" / "+prefs.getInt("postLimit",10)+" posts";
+        return (remaining/60000)+"m "+((remaining/1000)%60)+"s left today";
     }
     private void basePanel() {
-        generation++; browsing=false; waitingSnapshot=false;
+        generation++; browsing=false;
         web.setVisibility(View.GONE); web.onPause();
         ((View)panel.getTag()).setVisibility(View.VISIBLE); panel.removeAllViews();
         panel.setPadding(0,dp(28),0,dp(28));
@@ -354,9 +297,8 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     private void settings() {
         basePanel();showChrome(true);selectNav("Settings");panel.setPadding(0,0,0,0);
         AtaraxiaSettingsView settings=new AtaraxiaSettingsView(this);
-        settings.update(focused(),prefs.getInt("postLimit",10),prefs.getInt("sessionMinutes",5),prefs.getInt("dailyMinutes",15));
+        settings.update(focused(),prefs.getInt("sessionMinutes",5),prefs.getInt("dailyMinutes",15));
         settings.setActions(
-            ()->choose("postLimit","Posts per session",new int[]{5,10,15,20}),
             ()->choose("sessionMinutes","Minutes per session",new int[]{2,5,10}),
             ()->choose("dailyMinutes","Daily browsing minutes",new int[]{5,15,30,60}),
             ()->chooseMode(),()->showPrivacy(),()->clearInstagramSession(),
@@ -365,7 +307,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void showPrivacy() {
         new AlertDialog.Builder(this).setTitle("Local controls, honest limits")
-            .setMessage("Only Internet permission. No analytics, admin, Accessibility, VPN or notification access.\n\nInstagram login cookies remain in this app's private WebView storage; Meta still receives activity. Android backup is disabled. Settings and counters stay on-device.\n\nSponsored-post detection targets recognised feed markup and can miss ads. Post counting can miss unsupported layouts; native time limits remain active.\n\nNo calls, background notifications, downloads or Facebook sign-in support. Limits are voluntary, not parental-control enforcement.")
+            .setMessage("Only Internet permission. No analytics, admin, Accessibility, VPN or notification access.\n\nInstagram login cookies remain in this app's private WebView storage; Meta still receives activity. Android backup is disabled. Settings and time usage stay on-device.\n\nSponsored-post detection targets recognised feed markup and can miss ads. Post counting is parked for a future Extreme mode; native time limits remain active.\n\nNo calls, background notifications, downloads or Facebook sign-in support. Limits are voluntary, not parental-control enforcement.")
             .setPositiveButton("Done",null).show();
     }
     private void clearInstagramSession() {
@@ -379,9 +321,9 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void chooseMode() {
         new AlertDialog.Builder(this).setTitle("Choose your mode")
-            .setSingleChoiceItems(new String[]{"Focused — inbox only", "Balanced — add a capped feed"},focused()?0:1,(d,n)->{
+            .setSingleChoiceItems(new String[]{"Focused — inbox only", "Balanced — feed with time limits"},focused()?0:1,(d,n)->{
                 prefs.edit().putBoolean("focused",n==0).apply();
-                // Mode changes never reset time, post counts or the cooldown.
+                // Mode changes never reset time or the cooldown.
                 web.stopLoading(); d.dismiss(); showHome();
             }).setNegativeButton("Cancel",null).show();
     }
@@ -426,13 +368,13 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void confirmSettingsImport(SettingsBackup incoming) {
         new AlertDialog.Builder(this).setTitle("Replace settings?")
-            .setMessage((incoming.focused?"Focused":"Balanced")+" mode\n"+incoming.posts+" posts per session\n"
+            .setMessage((incoming.focused?"Focused":"Balanced")+" mode\n"
                 +incoming.sessionMinutes+" minutes per session\n"+incoming.dailyMinutes+" minutes per day\n"
-                +"\n\nReplaces current mode and boundaries. Legacy saved profiles are ignored. Existing login, usage counters and cooldown stay unchanged.")
+                +"\n\nReplaces current mode and boundaries. Post-count settings are retained for future Extreme mode and are inactive. Legacy saved profiles are ignored. Existing login, usage counters and cooldown stay unchanged.")
             .setNegativeButton("Cancel",null).setPositiveButton("Replace settings",(d,w)->{
                 prefs.edit().putBoolean("focused",incoming.focused).putInt("postLimit",incoming.posts)
                     .putInt("sessionMinutes",incoming.sessionMinutes).putInt("dailyMinutes",incoming.dailyMinutes).apply();
-                sessionGeneration++;web.stopLoading();showHome();
+                web.stopLoading();showHome();
                 Toast.makeText(this,"Settings restored.",Toast.LENGTH_SHORT).show();
             }).show();
     }
@@ -450,7 +392,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
                 .setPositiveButton("Done",null).show(); return;
         }
         final int page=generation;
-        web.evaluateJavascript("JSON.stringify(window.__ataraxiaStillness ? window.__ataraxiaStillness.snapshot() : null)",raw->{
+        web.evaluateJavascript("JSON.stringify(window.__ataraxiaStillness ? window.__ataraxiaStillness.status() : null)",raw->{
             if (isFinishing() || page!=generation || !browsing) return;
             String message="Filter not ready. Try refreshing the page. Native time limits remain active.";
             try {
@@ -460,11 +402,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
                     if (!state.optBoolean("feed")) message="Feed filtering is inactive on this page. Messages are not inspected.";
                     else message="Filter "+state.optString("version","unknown")+" loaded\nPosts or suggestions hidden on this page: "+state.optInt("hiddenAds")
                         +"\nPost containers detected: "+state.optInt("containers")
-                        +"\nPosts using local identity: "+state.optInt("linkless")
-                        +"\nSession posts counted: "+seen.size()
-                        +"\n\n"+(state.optInt("containers")==0
-                            ? "Post counting is unavailable in this layout. Native time limits remain active."
-                            : "Linkless posts use opaque local identities; anonymous cards may be recounted after a reload. Ad filtering is best effort.");
+                        +"\n\nAd filtering is best effort. Post counting is parked for future Extreme mode. Native time limits remain active.";
                 }
             } catch(Exception ignored) { }
             new AlertDialog.Builder(this).setTitle("Filter status").setMessage(message)
@@ -498,8 +436,8 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         composeBottomBar.setVisibility(state);
     }
     private void selectNav(String label){if(composeBottomBar!=null)composeBottomBar.select(label);}
-    @Override protected void onResume(){super.onResume();active=true;lastTick=SystemClock.elapsedRealtime();if(web!=null && browsing)web.onResume();handler.post(ticker);handler.post(snapshotter);}
-    @Override protected void onPause(){active=false;handler.removeCallbacks(ticker);handler.removeCallbacks(snapshotter);if(web!=null)web.onPause();super.onPause();}
+    @Override protected void onResume(){super.onResume();active=true;lastTick=SystemClock.elapsedRealtime();if(web!=null && browsing)web.onResume();handler.post(ticker);}
+    @Override protected void onPause(){active=false;handler.removeCallbacks(ticker);if(web!=null)web.onPause();super.onPause();}
     @Override public void onBackPressed(){
         if (!browsing) { super.onBackPressed(); return; }
         rollDay(); refreshSession();
@@ -514,5 +452,5 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         }
         showHome();
     }
-    @Override protected void onDestroy(){backupIO.shutdownNow();handler.removeCallbacks(ticker);handler.removeCallbacks(snapshotter);if(fileCallback!=null)fileCallback.onReceiveValue(null);if(web!=null){content.removeView(web);web.destroy();}super.onDestroy();}
+    @Override protected void onDestroy(){backupIO.shutdownNow();handler.removeCallbacks(ticker);if(fileCallback!=null)fileCallback.onReceiveValue(null);if(web!=null){content.removeView(web);web.destroy();}super.onDestroy();}
 }

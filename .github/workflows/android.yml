@@ -39,7 +39,7 @@ jobs:
           java -cp build/tests PolicyTest
           java -cp build/tests BudgetTest
           java -cp build/tests SettingsBackupTest
-      - name: Test feed filters and fast scrolling
+      - name: Test basic filters and scroll stability
         run: |
           node --check app/src/main/assets/filter.js
           node tests/filter-regression.test.cjs
@@ -64,25 +64,31 @@ jobs:
         run: |
           mkdir -p dist
           cp build/privacy-review.json dist/privacy-review.json
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Ataraxia-0.2.0-alpha10.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Ataraxia-0.2.0-alpha11.apk
           sdk_tools="$ANDROID_HOME/build-tools/35.0.0"
-          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Ataraxia-0.2.0-alpha10.apk > dist/SIGNATURE.txt
-          "$sdk_tools/zipalign" -c -p 4 dist/Ataraxia-0.2.0-alpha10.apk
-          "$sdk_tools/aapt" dump badging dist/Ataraxia-0.2.0-alpha10.apk > dist/manifest.txt
+          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Ataraxia-0.2.0-alpha11.apk > dist/SIGNATURE.txt
+          "$sdk_tools/zipalign" -c -p 4 dist/Ataraxia-0.2.0-alpha11.apk
+          "$sdk_tools/aapt" dump badging dist/Ataraxia-0.2.0-alpha11.apk > dist/manifest.txt
           python3 - <<'PY'
           from pathlib import Path
+          from zipfile import ZipFile
+          with ZipFile('dist/Ataraxia-0.2.0-alpha11.apk') as apk:
+              rules = apk.read('assets/filter.js')
+              assert rules == Path('app/src/main/assets/filter.js').read_bytes()
+              assert b'countPosts' not in rules
+              assert not any('experiments/' in name or 'filter-alpha10' in name for name in apk.namelist())
           text = Path('dist/manifest.txt').read_text()
-          assert "package: name='app.ataraxia.social' versionCode='20' versionName='0.2.0-alpha10'" in text
+          assert "package: name='app.ataraxia.social' versionCode='21' versionName='0.2.0-alpha11'" in text
           permissions = [line for line in text.splitlines() if line.startswith('uses-permission:')]
           assert permissions == ["uses-permission: name='android.permission.INTERNET'"], permissions
           assert 'application-debuggable' not in text
           print('Verified identity, version, Internet-only permissions and non-debuggable manifest')
           PY
           cd dist
-          sha256sum Ataraxia-0.2.0-alpha10.apk > SHA256SUMS.txt
+          sha256sum Ataraxia-0.2.0-alpha11.apk > SHA256SUMS.txt
       - name: Upload verified pilot APK
         uses: actions/upload-artifact@v4
         with:
-          name: Ataraxia-0.2.0-alpha10
+          name: Ataraxia-0.2.0-alpha11
           path: dist/*
           if-no-files-found: error

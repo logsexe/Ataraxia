@@ -76,41 +76,44 @@ class AtaraxiaSettingsView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
 ) : AbstractComposeView(context, attrs, defStyleAttr) {
     private var focused by mutableStateOf(true)
-    private var posts by mutableStateOf(10)
     private var session by mutableStateOf(5)
     private var daily by mutableStateOf(15)
     private var actions: List<Runnable> = emptyList()
 
-    fun update(focusedMode: Boolean, postLimit: Int, sessionMinutes: Int, dailyMinutes: Int) {
-        focused = focusedMode; posts = postLimit; session = sessionMinutes; daily = dailyMinutes
+    fun update(focusedMode: Boolean, sessionMinutes: Int, dailyMinutes: Int) {
+        focused = focusedMode; session = sessionMinutes; daily = dailyMinutes
     }
 
     fun setActions(
-        postsAction: Runnable, sessionAction: Runnable, dailyAction: Runnable,
+        sessionAction: Runnable, dailyAction: Runnable,
         modeAction: Runnable, privacyAction: Runnable, clearAction: Runnable,
         exportAction: Runnable, importAction: Runnable, philosophyAction: Runnable
-    ) { actions = listOf(postsAction, sessionAction, dailyAction, modeAction, privacyAction, clearAction, exportAction, importAction, philosophyAction) }
+    ) { actions = listOf(sessionAction, dailyAction, modeAction, privacyAction, clearAction, exportAction, importAction, philosophyAction) }
 
     @Composable override fun Content() = AtaraxiaTheme {
         ScreenFrame(
             "YOUR PRACTICE", "Boundaries,\nchosen by you.",
             "Adjust the edges of the experience. Ataraxia supports your intention without pretending to control you."
         ) {
-            ValueCard("Mode", if (focused) "Focused · inbox only" else "Balanced · following feed included", Icons.Filled.Settings) { actions.getOrNull(3)?.run() }
+            ValueCard("Mode", if (focused) "Focused · inbox only" else "Balanced · feed with time limits", Icons.Filled.Settings) { actions.getOrNull(2)?.run() }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Metric("POSTS", "$posts", Modifier.weight(1f))
                 Metric("SESSION", "$session min", Modifier.weight(1f))
                 Metric("DAILY", "$daily min", Modifier.weight(1f))
             }
-            ValueCard("Posts per session", "$posts posts", Icons.Filled.List) { actions.getOrNull(0)?.run() }
-            ValueCard("Session length", "$session minutes", Icons.Filled.Email) { actions.getOrNull(1)?.run() }
-            ValueCard("Daily allowance", "$daily minutes", Icons.Filled.Home) { actions.getOrNull(2)?.run() }
+            ValueCard("Session length", "$session minutes", Icons.Filled.Email) { actions.getOrNull(0)?.run() }
+            ValueCard("Daily allowance", "$daily minutes", Icons.Filled.Home) { actions.getOrNull(1)?.run() }
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.small) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Extreme mode · planned", style = MaterialTheme.typography.titleMedium)
+                    Text("Post-count limits are parked while we focus on smooth scrolling.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             Text("PRIVACY & PORTABILITY", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
-            ValueCard("Privacy and limitations", "What Ataraxia can—and cannot—protect", Icons.Filled.Info) { actions.getOrNull(4)?.run() }
-            ValueCard("Clear Instagram login", "Remove cookies, website storage and cache", Icons.Filled.Delete) { actions.getOrNull(5)?.run() }
-            ValueCard("Export settings", "Readable file; login and history excluded", Icons.Filled.Share) { actions.getOrNull(6)?.run() }
-            ValueCard("Import settings", "Review before replacing boundaries", Icons.Filled.Refresh) { actions.getOrNull(7)?.run() }
-            TextButton(onClick = { actions.getOrNull(8)?.run() }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            ValueCard("Privacy and limitations", "What Ataraxia can—and cannot—protect", Icons.Filled.Info) { actions.getOrNull(3)?.run() }
+            ValueCard("Clear Instagram login", "Remove cookies, website storage and cache", Icons.Filled.Delete) { actions.getOrNull(4)?.run() }
+            ValueCard("Export settings", "Readable file; login and history excluded", Icons.Filled.Share) { actions.getOrNull(5)?.run() }
+            ValueCard("Import settings", "Review before replacing boundaries", Icons.Filled.Refresh) { actions.getOrNull(6)?.run() }
+            TextButton(onClick = { actions.getOrNull(7)?.run() }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                 Text("Philosophy and purpose")
             }
             Text("Free forever · No developer ads · No analytics", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally))
@@ -167,7 +170,7 @@ class AtaraxiaPhilosophyView @JvmOverloads constructor(
                     "Both modes keep Reels and Explore blocked. Change modes and boundaries whenever you choose.") {
                     Thought("FOCUSED", "Messages only. The home feed stays unavailable.")
                     FullButton("Begin in Focused mode", onClick = { focused?.run() })
-                    Thought("BALANCED", "Messages and a short following feed, contained by your limits.")
+                    Thought("BALANCED", "Messages and the feed, with session and daily time limits.")
                     FullButton("Begin in Balanced mode", onClick = { balanced?.run() })
                     FullButton("Back", onClick = { back?.run() }, secondary = true)
                     Text("Ataraxia is free and has no developer ads or analytics. Meta still processes activity inside Instagram's website.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

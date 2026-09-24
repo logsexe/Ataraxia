@@ -8,6 +8,7 @@ import java.util.*;
 public final class SettingsBackup {
     public static final int MAX_BYTES=16384;
     public final boolean focused;
+    // Legacy post boundary is preserved for future Extreme mode; it is inactive.
     public final int posts,sessionMinutes,dailyMinutes;
     public final SortedSet<String> profiles;
     public SettingsBackup(boolean focused,int posts,int sessionMinutes,int dailyMinutes,Collection<String> profiles) {

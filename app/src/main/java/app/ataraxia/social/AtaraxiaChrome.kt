@@ -131,7 +131,7 @@ class AtaraxiaTopBarView @JvmOverloads constructor(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 5.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
-                // Keep the WebView viewport stable as the counter/timer wraps.
+                // Keep the WebView viewport stable as the timer wraps.
                 minLines = 2,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -232,7 +232,6 @@ class AtaraxiaHomeView @JvmOverloads constructor(
     private var focused by mutableStateOf(true)
     private var summary by mutableStateOf("")
     private var progress by mutableStateOf(0f)
-    private var postLimit by mutableStateOf(10)
     private var sessionMinutes by mutableStateOf(5)
     private var dailyMinutes by mutableStateOf(15)
     private var inboxAction: Runnable? = null
@@ -244,14 +243,12 @@ class AtaraxiaHomeView @JvmOverloads constructor(
         focusedMode: Boolean,
         summaryText: String,
         dailyProgress: Float,
-        posts: Int,
         session: Int,
         daily: Int
     ) {
         focused = focusedMode
         summary = summaryText
         progress = dailyProgress.coerceIn(0f, 1f)
-        postLimit = posts
         sessionMinutes = session
         dailyMinutes = daily
     }
@@ -310,8 +307,8 @@ class AtaraxiaHomeView @JvmOverloads constructor(
             )
             AnimatedVisibility(visible = !focused) {
                 IntentAction(
-                    title = "Following feed",
-                    body = "A finite view of people you follow. Recognised suggestions are hidden.",
+                    title = "Feed",
+                    body = "Browse within your time limits. Recognised ads and suggestions are hidden.",
                     action = "Open feed",
                     onClick = { feedAction?.run() }
                 )
@@ -322,7 +319,7 @@ class AtaraxiaHomeView @JvmOverloads constructor(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("$postLimit posts · $sessionMinutes min", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp)
+                    Text("$sessionMinutes min per session", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp)
                     Text("$dailyMinutes min daily boundary", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                 }
                 TextButton(onClick = { modeAction?.run() }) {
