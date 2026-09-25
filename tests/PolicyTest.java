@@ -25,6 +25,9 @@ public class PolicyTest {
         for(String name:new String[]{"https://instagram.com/user/","../reels","reels","DIRECT","user?x=1","user/name","a..b","name.","", "a".repeat(31)})
             check(Policy.profileName(name)==null,"reject invalid profile "+name);
         check(Policy.profileName(null)==null,"null input");
+        String wv="Mozilla/5.0 (Linux; Android 15; Pixel 8 Pro Build/AP4A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/140.0.7339.51 Mobile Safari/537.36";
+        check(Policy.browserUserAgent(wv).equals("Mozilla/5.0 (Linux; Android 15; Pixel 8 Pro Build/AP4A) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.7339.51 Mobile Safari/537.36"),"webview markers removed");
+        check(Policy.browserUserAgent(null)==null,"null user agent keeps the default");
         System.out.println("PASS: "+count+" navigation/security policy assertions");
     }
 }

@@ -16,8 +16,12 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  </body></html>`;
  await page.route('https://www.instagram.com/**',route=>route.fulfill({contentType:'text/html',body:html}));
  await page.goto('https://www.instagram.com/'); await page.evaluate(script);
- assert.equal(await page.locator('#reels').isVisible(),false);
- assert.equal(await page.locator('#explore').isVisible(),false);
+ // Blocked route links keep their layout slot (no dead space) but cannot be tapped.
+ for (const id of ['#reels','#explore']) {
+  assert.equal(await page.locator(id).isVisible(),true);
+  assert.equal(await page.locator(id).evaluate(e=>getComputedStyle(e).pointerEvents),'none');
+ }
+ assert.equal(await page.locator('#inbox').evaluate(e=>getComputedStyle(e).pointerEvents),'auto');
  assert.equal(await page.locator('#inbox').isVisible(),true);
  assert.equal(await page.locator('#ad').isVisible(),false);
  assert.equal(await page.locator('#first').isVisible(),true);
@@ -27,7 +31,7 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  await page.evaluate(script);state=await page.evaluate(()=>window.__ataraxiaStillness.status());
  assert.equal(state.hiddenAds,2); // idempotent; no new observers/state resets
  await page.evaluate(()=>{const a=document.createElement('a');a.id='dynamic';a.href='/reel/xyz/';a.textContent='Watch';document.body.append(a);});
- await page.waitForFunction(()=>document.querySelector('#dynamic').dataset.quietHidden==='true');
+ await page.waitForFunction(()=>document.querySelector('#dynamic').hasAttribute('data-quiet-inert'));
  await page.evaluate(()=>{history.pushState({},'', '/direct/inbox/'); document.querySelector('#first header span').textContent='Sponsored'; window.__ataraxiaStillness.scan();});
  assert.equal(await page.locator('#first').isVisible(),true); // do not inspect/filter messages
  assert.equal((await page.evaluate(()=>window.__ataraxiaStillness.status())).feed,false);

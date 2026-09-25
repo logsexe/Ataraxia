@@ -44,5 +44,10 @@ public final class Policy {
             if (reserved.equals(name)) return null;
         return name;
     }
+    /** Drop the embedded-WebView markers ("; wv" and "Version/4.0") from the system user agent. */
+    public static String browserUserAgent(String ua) {
+        if (ua == null) return null;
+        return ua.replace("; wv)", ")").replaceFirst(" Version/\\d+(\\.\\d+)* ", " ");
+    }
     private Policy() { }
 }

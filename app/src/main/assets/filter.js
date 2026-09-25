@@ -6,7 +6,7 @@
     if (window.__ataraxiaConfig) window.__ataraxiaStillness.configure(window.__ataraxiaConfig);
     return;
   }
-  const VERSION = 'alpha11', SEMANTIC = 'article,[role="article"]';
+  const VERSION = 'alpha12', SEMANTIC = 'article,[role="article"]';
   const cards = new Map(), dirty = new Set(), roots = new Set(), hiddenOwners = new Map();
   const pointers = new Set();
   const SETTLE_MS = 160;
@@ -22,7 +22,10 @@
     flag(document.documentElement,'data-quiet-focused',isFeed() && focused);
   }
   const style = document.createElement('style');
-  style.textContent = '[data-quiet-hidden="true"],[data-quiet-home-hidden="true"]{display:none!important}' +
+  // Blocked route links are dimmed and disabled in place. Removing them (display:none) left
+  // holes in Instagram's navigation bar and blank tiles in suggested-Reels rows.
+  style.textContent = '[data-quiet-hidden="true"]{display:none!important}' +
+    '[data-quiet-inert],[data-quiet-home-hidden="true"]{opacity:.28!important;pointer-events:none!important;filter:grayscale(1)!important}' +
     'html[data-quiet-focused] body{visibility:hidden!important;pointer-events:none!important}' +
     'html[data-quiet-focused]::after{content:"Focused mode. Open Inbox or Home below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}';
   (document.head || document.documentElement).appendChild(style);
@@ -85,9 +88,7 @@
         const u = new URL(a.getAttribute('href'),location.href);
         if (!instagram(u)) continue;
         // A Reel permalink can wrap real feed media. Preserve it; block its click.
-        const hide = blockedPath(u.pathname) && !owner(a);
-        if (hide) { if (a.dataset.quietHidden !== 'true') a.dataset.quietHidden = 'true'; }
-        else if (!hiddenOwners.has(a)) delete a.dataset.quietHidden;
+        flag(a,'data-quiet-inert',blockedPath(u.pathname) && !owner(a));
         if (focused && u.pathname === '/') a.dataset.quietHomeHidden = 'true';
         else delete a.dataset.quietHomeHidden;
       } catch (_) { }

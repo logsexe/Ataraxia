@@ -13,3 +13,4 @@ This is an unaudited pilot. No app is a safe place for credentials solely becaus
 - Source changes require a newly signed APK. Preserve a private release key if maintaining this app. Never place signing keys, session cookies or passwords in a public repository.
 
 Before a public release: independently review login/session handling, test on real Pixel/GrapheneOS devices, add instrumentation coverage, establish a maintained signing/update process, validate accessibility, and test current live Instagram markup. UI filtering is a continuing maintenance responsibility.
+- The WebView user agent drops the embedded-browser markers (`; wv`, `Version/4.0`) so Instagram serves its regular mobile site. It still identifies as Chromium on Android; this is not fingerprint resistance.

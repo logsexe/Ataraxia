@@ -30,15 +30,17 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     private AtaraxiaBottomBarView composeBottomBar;
     private FrameLayout content;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private boolean active, browsing;
-    private long lastTick;
+    private ProgressBar progress;
+    private boolean active, browsing, forceLoad;
+    private long lastTick, lastReject;
+    private int rejectStreak;
     private String script;
     private ValueCallback<Uri[]> fileCallback;
     private final java.util.concurrent.ExecutorService backupIO=java.util.concurrent.Executors.newSingleThreadExecutor();
     private int generation;
     private final Runnable ticker = new Runnable() {
         public void run() {
-            if (!active) return;
+            if (!active || web == null) return;
             rollDay();
             refreshSession();
             long now = SystemClock.elapsedRealtime();
@@ -46,10 +48,11 @@ public class MainActivity extends androidx.activity.ComponentActivity {
             lastTick = now;
             String url = web.getUrl();
             if (browsing && Policy.internal(url)) {
-                if (Policy.blocked(url,focused())) { rejectRoute(); }
+                if (Policy.blocked(url,focused())) { rejectInPage(); }
                 else if (!Policy.exempt(url)) {
                     prefs.edit().putLong("dailyMs", prefs.getLong("dailyMs",0) + delta)
-                        .putLong("sessionMs", prefs.getLong("sessionMs",0) + delta).apply();
+                        .putLong("sessionMs", prefs.getLong("sessionMs",0) + delta)
+                        .putLong("lastActive", System.currentTimeMillis()).apply();
                     if (limited()) showLimit();
                 }
             }
@@ -91,6 +94,12 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(0,dp(28),0,dp(28));
         scroll.addView(panel); content.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
         panel.setTag(scroll);
+        // Thin load indicator over the page. INVISIBLE (never GONE) so toggling it cannot relayout the WebView.
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(100); progress.setVisibility(View.INVISIBLE);
+        progress.setProgressTintList(android.content.res.ColorStateList.valueOf(ACCENT_STRONG));
+        progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(BG));
+        content.addView(progress,new FrameLayout.LayoutParams(-1,dp(3),Gravity.TOP));
         composeBottomBar = new AtaraxiaBottomBarView(this);
         composeBottomBar.setActions(()->navigate(BASE+"/direct/inbox/"),()->openFeed(),()->settings());
         root.addView(composeBottomBar,new LinearLayout.LayoutParams(-1,dp(88)));
@@ -108,6 +117,10 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         s.setSafeBrowsingEnabled(true); s.setMediaPlaybackRequiresUserGesture(true);
         s.setJavaScriptCanOpenWindowsAutomatically(false); s.setSupportMultipleWindows(true);
         s.setGeolocationEnabled(false);
+        // Raster tiles just outside the viewport so a fast fling does not reveal blank areas.
+        s.setOffscreenPreRaster(true);
+        // "; wv" makes Instagram serve its embedded-browser variant; present as regular mobile Chromium.
+        s.setUserAgentString(Policy.browserUserAgent(s.getUserAgentString()));
         WebView.setWebContentsDebuggingEnabled(false);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web,false);
@@ -118,20 +131,24 @@ public class MainActivity extends androidx.activity.ComponentActivity {
             }
             @Override public void onPageStarted(WebView view,String url,android.graphics.Bitmap icon) {
                 generation++;
+                if ("about:blank".equals(url)) return;
                 if (!Policy.internal(url)) { web.stopLoading(); showHome(); return; }
                 if (Policy.blocked(url,focused())) { rejectRoute(); return; }
-                if (!Policy.exempt(url) && limited()) { web.stopLoading(); showLimit(); return; }
-                if (browsing) web.setVisibility(View.INVISIBLE);
+                if (!Policy.exempt(url) && limited()) { web.stopLoading(); showLimit(); }
+                // The page is no longer hidden until onPageFinished (every image loaded): that
+                // left a blank screen for seconds. Rules are injected as soon as it first draws.
             }
+            @Override public void onPageCommitVisible(WebView view,String url) { injectFilter(url); }
             @Override public void onPageFinished(WebView view,String url) {
-                if (!browsing || !Policy.internal(url) || Policy.blocked(url,focused())) return;
-                final int page = generation;
-                web.evaluateJavascript(configuredFilterScript(), value -> {
-                    if (browsing && page==generation) {
-                        web.setVisibility(View.VISIBLE);
-                    }
-                });
+                injectFilter(url);
                 CookieManager.getInstance().flush();
+            }
+            // Instagram navigates with history.pushState, which never reaches shouldOverrideUrlLoading.
+            // Enforce routes and limits here immediately instead of waiting for the one-second tick.
+            @Override public void doUpdateVisitedHistory(WebView view,String url,boolean isReload) {
+                if (!browsing || !Policy.internal(url)) return;
+                if (Policy.blocked(url,focused())) { rejectInPage(); return; }
+                if (!Policy.exempt(url) && limited()) showLimit();
             }
             @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error) {
                 if (request.isForMainFrame() && browsing) showError("Instagram could not load. Check your connection and VPN, then try again.");
@@ -148,10 +165,15 @@ public class MainActivity extends androidx.activity.ComponentActivity {
                 return null;
             }
             @Override public boolean onRenderProcessGone(WebView view,RenderProcessGoneDetail detail) {
-                content.removeView(web); web.destroy(); web=null; recreate(); return true;
+                if (view==web) { content.removeView(web); web.destroy(); web=null; }
+                recreate(); return true;
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
+            @Override public void onProgressChanged(WebView view,int value) {
+                progress.setProgress(value);
+                progress.setVisibility(browsing && value<100 ? View.VISIBLE : View.INVISIBLE);
+            }
             @Override public void onPermissionRequest(PermissionRequest request) { request.deny(); }
             @Override public boolean onCreateWindow(WebView view,boolean dialog,boolean gesture,Message message) {
                 Toast.makeText(MainActivity.this,"Pop-ups are disabled in this pilot.",Toast.LENGTH_SHORT).show(); return false;
@@ -190,7 +212,8 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     }
     private boolean allowNavigation(String url) {
         if (Policy.internal(url)) {
-            if (Policy.blocked(url,focused())) { rejectRoute(); return false; }
+            // A blocked link tapped inside Instagram: the load is cancelled and the page stays put.
+            if (Policy.blocked(url,focused())) { blockedToast(); return false; }
             if (!Policy.exempt(url) && limited()) { showLimit(); return false; }
             return true;
         }
@@ -206,16 +229,53 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         return false;
     }
     private void navigate(String url) {
+        if (web==null) return;
         rollDay(); refreshSession();
         if (!allowNavigation(url)) return;
+        String current=web.getUrl();
+        boolean loaded=!forceLoad && Policy.internal(current) && !Policy.blocked(current,focused());
+        forceLoad=false;
         browsing=true; showChrome(true); ((View)panel.getTag()).setVisibility(View.GONE);
         selectNav(Policy.exempt(url)?"Inbox":"Feed");
-        web.setAlpha(0f);web.setVisibility(View.VISIBLE);web.onResume();lastTick=SystemClock.elapsedRealtime();web.loadUrl(url);
-        web.animate().alpha(1f).setDuration(180).start();
+        web.setVisibility(View.VISIBLE);web.onResume();lastTick=SystemClock.elapsedRealtime();
+        if (!loaded) { web.setAlpha(0f);web.loadUrl(url);web.animate().alpha(1f).setDuration(180).start(); return; }
+        // Instagram is already loaded (it stays loaded, paused, behind Ataraxia's own screens):
+        // switch sections through Instagram's own link instead of reloading the whole site.
+        web.setAlpha(1f);
+        injectFilter(current); // re-apply the current mode (Focused/Balanced) to the live page
+        String path=Policy.path(url);
+        if (path.equals(Policy.path(current))) return;
+        web.evaluateJavascript("(function(p){var a=document.querySelector('a[href=\"'+p+'\"]');"
+            +"if(!a)return false;a.click();return true})("+JSONObject.quote(path)+")",done->{
+            if (web==null || !browsing) return;
+            if (!"true".equals(done)) { web.loadUrl(url); return; }
+            // If Instagram ignored the click (page unchanged), fall back to a normal load.
+            handler.postDelayed(()->{
+                if (web!=null && browsing && Objects.equals(current,web.getUrl())) web.loadUrl(url);
+            },1500);
+        });
     }
     private boolean focused() { return prefs.getBoolean("focused",true); }
+    private void blockedToast() {
+        Toast.makeText(this,focused()?"Focused mode: home feed, Reels and Explore are off.":"Reels and Explore are switched off.",Toast.LENGTH_SHORT).show();
+    }
     private void rejectRoute() {
-        web.stopLoading(); showHome(); Toast.makeText(this,focused()?"Focused mode: home feed, Reels and Explore are off.":"Reels and Explore are switched off.",Toast.LENGTH_SHORT).show();
+        if (web==null) return;
+        web.stopLoading(); showHome(); blockedToast();
+    }
+    /** An in-page (pushState) route was blocked: step back to where the person was, e.g. the DM
+     *  thread that held the Reel, rather than reloading the inbox. Falls back if history bounces. */
+    private void rejectInPage() {
+        if (web==null) return;
+        long now=SystemClock.elapsedRealtime();
+        rejectStreak = now-lastReject<2000 ? rejectStreak+1 : 0;
+        lastReject=now;
+        if (rejectStreak<3 && web.canGoBack()) { web.goBack(); blockedToast(); }
+        else rejectRoute();
+    }
+    private void injectFilter(String url) {
+        if (web==null || !browsing || !Policy.internal(url) || Policy.blocked(url,focused())) return;
+        web.evaluateJavascript(configuredFilterScript(), null);
     }
     private void openFeed() { if(focused()){rejectRoute();return;} refreshSession(); if(limited()) showLimit(); else navigate(BASE+"/"); }
     private String configuredFilterScript() {
@@ -224,13 +284,19 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     private void rollDay() {
         String today=LocalDate.now().toString();
         if(!today.equals(prefs.getString("day",""))) {
-            prefs.edit().putString("day",today).putLong("dailyMs",0).apply();
+            // A new day is a new session too (alpha11 kept yesterday's session minutes). A break
+            // that is already running still applies across midnight.
+            prefs.edit().putString("day",today).putLong("dailyMs",0).putLong("sessionMs",0).putLong("lastActive",0).apply();
         }
     }
     private void refreshSession() {
         long until=prefs.getLong("cooldown",0);
-        if(until>0 && System.currentTimeMillis()>=until) {
+        long now=System.currentTimeMillis();
+        if(until>0 && now>=until) {
             prefs.edit().putLong("sessionMs",0).putLong("cooldown",0).apply();
+        } else if (Budget.sessionStale(prefs.getLong("sessionMs",0),prefs.getLong("lastActive",0),until,now)) {
+            // Away 30+ minutes: short check-ins across the day no longer add up into one session.
+            prefs.edit().putLong("sessionMs",0).apply();
         }
     }
     private boolean limited() {
@@ -247,7 +313,9 @@ public class MainActivity extends androidx.activity.ComponentActivity {
     }
     private void basePanel() {
         generation++; browsing=false;
-        web.setVisibility(View.GONE); web.onPause();
+        // INVISIBLE, not GONE: the loaded page stays laid out and paused, so returning is instant.
+        if (web!=null) { web.setVisibility(View.INVISIBLE); web.onPause(); }
+        if (progress!=null) progress.setVisibility(View.INVISIBLE);
         ((View)panel.getTag()).setVisibility(View.VISIBLE); panel.removeAllViews();
         panel.setPadding(0,dp(28),0,dp(28));
         panel.animate().cancel();panel.setAlpha(0f);panel.setTranslationY(dp(10));
@@ -314,9 +382,11 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         new AlertDialog.Builder(this).setTitle("Clear Instagram session?")
             .setMessage("Removes this app's login cookies, website storage and cache. Your limits remain.")
             .setNegativeButton("Cancel",null).setPositiveButton("Clear",(a,b)->{
-                web.stopLoading(); showHome(); web.loadUrl("about:blank");
-                CookieManager.getInstance().removeAllCookies(value->CookieManager.getInstance().flush());
+                if (web==null) return;
+                web.stopLoading(); web.loadUrl("about:blank");
                 WebStorage.getInstance().deleteAllData(); web.clearCache(true); web.clearHistory();
+                forceLoad=true; // never reuse the signed-out page
+                CookieManager.getInstance().removeAllCookies(value->{CookieManager.getInstance().flush();showHome();});
             }).show();
     }
     private void chooseMode() {
@@ -436,7 +506,7 @@ public class MainActivity extends androidx.activity.ComponentActivity {
         composeBottomBar.setVisibility(state);
     }
     private void selectNav(String label){if(composeBottomBar!=null)composeBottomBar.select(label);}
-    @Override protected void onResume(){super.onResume();active=true;lastTick=SystemClock.elapsedRealtime();if(web!=null && browsing)web.onResume();handler.post(ticker);}
+    @Override protected void onResume(){super.onResume();active=true;lastTick=SystemClock.elapsedRealtime();if(web!=null && browsing)web.onResume();handler.removeCallbacks(ticker);handler.post(ticker);}
     @Override protected void onPause(){active=false;handler.removeCallbacks(ticker);if(web!=null)web.onPause();super.onPause();}
     @Override public void onBackPressed(){
         if (!browsing) { super.onBackPressed(); return; }

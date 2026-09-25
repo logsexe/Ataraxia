@@ -20,3 +20,14 @@ Do not remove your existing Instagram app until these pass. Test in the intended
 - [ ] Test with Proton VPN connected.
 
 Known fallback: if Instagram uses unsupported feed markup, ad filtering may not work. Native time limits should still work. Login, messaging, upload or web layout failures may require changes to the pilot. If a critical flow fails, keep the official app while reporting the issue.
+
+## Alpha12 additions
+
+- [ ] Fling the Balanced feed fast in both directions: no blank screen while it loads, no blank tiles, no stutter beyond Instagram's own.
+- [ ] Switch Inbox ↔ Feed from the bottom bar: the page changes without a full reload or white flash.
+- [ ] Rotate the phone and open/close the keyboard in a DM: Instagram doesn't reload.
+- [ ] Reels/Explore icons appear dimmed and can't be tapped, with no gap in Instagram's navigation bar. A Reel shared in a DM is stopped and you return to the thread.
+- [ ] Log in again and open DMs with the new user agent: login, 2FA and messaging still work.
+- [ ] Browse, stay away 30+ minutes, return: the session starts fresh and daily minutes are kept. After midnight, both reset.
+- [ ] Settings → Clear Instagram login: you're signed out and see Instagram's login page, not a stale page.
+

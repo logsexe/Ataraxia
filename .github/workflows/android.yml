@@ -23,6 +23,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Read version (gradle.properties is the single source)
+        id: version
+        run: |
+          name=$(grep '^ATARAXIA_VERSION_NAME=' gradle.properties | cut -d= -f2)
+          code=$(grep '^ATARAXIA_VERSION_CODE=' gradle.properties | cut -d= -f2)
+          test -n "$name" && test -n "$code"
+          echo "version=$name" >> "$GITHUB_OUTPUT"
+          echo "VERSION_NAME=$name" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$code" >> "$GITHUB_ENV"
       - name: Privacy and philosophy regression checks
         run: |
           python3 tools/privacy_check.py
@@ -64,31 +73,34 @@ jobs:
         run: |
           mkdir -p dist
           cp build/privacy-review.json dist/privacy-review.json
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Ataraxia-0.2.0-alpha11.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/Ataraxia-$VERSION_NAME.apk"
           sdk_tools="$ANDROID_HOME/build-tools/35.0.0"
-          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Ataraxia-0.2.0-alpha11.apk > dist/SIGNATURE.txt
-          "$sdk_tools/zipalign" -c -p 4 dist/Ataraxia-0.2.0-alpha11.apk
-          "$sdk_tools/aapt" dump badging dist/Ataraxia-0.2.0-alpha11.apk > dist/manifest.txt
+          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Ataraxia-$VERSION_NAME.apk > dist/SIGNATURE.txt
+          "$sdk_tools/zipalign" -c -p 4 dist/Ataraxia-$VERSION_NAME.apk
+          "$sdk_tools/aapt" dump badging dist/Ataraxia-$VERSION_NAME.apk > dist/manifest.txt
           python3 - <<'PY'
           from pathlib import Path
           from zipfile import ZipFile
-          with ZipFile('dist/Ataraxia-0.2.0-alpha11.apk') as apk:
+          import os
+          apk_name=f"dist/Ataraxia-{os.environ['VERSION_NAME']}.apk"
+          with ZipFile(apk_name) as apk:
               rules = apk.read('assets/filter.js')
               assert rules == Path('app/src/main/assets/filter.js').read_bytes()
               assert b'countPosts' not in rules
               assert not any('experiments/' in name or 'filter-alpha10' in name for name in apk.namelist())
           text = Path('dist/manifest.txt').read_text()
-          assert "package: name='app.ataraxia.social' versionCode='21' versionName='0.2.0-alpha11'" in text
+          expected=f"package: name='app.ataraxia.social' versionCode='{os.environ['VERSION_CODE']}' versionName='{os.environ['VERSION_NAME']}'"
+          assert expected in text, text.splitlines()[0]
           permissions = [line for line in text.splitlines() if line.startswith('uses-permission:')]
           assert permissions == ["uses-permission: name='android.permission.INTERNET'"], permissions
           assert 'application-debuggable' not in text
           print('Verified identity, version, Internet-only permissions and non-debuggable manifest')
           PY
           cd dist
-          sha256sum Ataraxia-0.2.0-alpha11.apk > SHA256SUMS.txt
+          sha256sum Ataraxia-$VERSION_NAME.apk > SHA256SUMS.txt
       - name: Upload verified pilot APK
         uses: actions/upload-artifact@v4
         with:
-          name: Ataraxia-0.2.0-alpha11
+          name: Ataraxia-${{ steps.version.outputs.version }}
           path: dist/*
           if-no-files-found: error
