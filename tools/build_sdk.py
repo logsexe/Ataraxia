@@ -17,13 +17,15 @@ env=dict(os.environ,JAVA_HOME=str(jdk),PATH=str(jdk/'bin')+os.pathsep+os.environ
 if not env.get('ATARAXIA_SIGNING_PASSWORD'):raise SystemExit('Set ATARAXIA_SIGNING_PASSWORD in your environment')
 def run(*cmd):subprocess.run([str(x) for x in cmd],check=True,env=env)
 android=sdk/'platforms/android-35/android.jar'
+props=dict(l.split('=',1) for l in (root/'gradle.properties').read_text().splitlines() if '=' in l and not l.startswith('#'))
+version_name,version_code=props['ATARAXIA_VERSION_NAME'].strip(),props['ATARAXIA_VERSION_CODE'].strip()
 manifest=(root/'app/src/main/AndroidManifest.xml').read_text().replace('<manifest xmlns:android=', '<manifest package="app.ataraxia.social" xmlns:android=')
 (build/'AndroidManifest.xml').write_text(manifest)
 run(jdk/'bin/javac','-encoding','UTF-8','-source','17','-target','17','-classpath',android,'-d',build/'classes',*sorted((root/'app/src/main/java').rglob('*.java')))
 run(jdk/'bin/jar','--create','--file',build/'classes.jar','-C',build/'classes','.')
 run(bt/'d8','--release','--min-api','30','--lib',android,'--output',build/'dex',build/'classes.jar')
 run(bt/'aapt2','compile','--dir',root/'app/src/main/res','-o',build/'resources.zip')
-run(bt/'aapt2','link','-o',build/'unsigned.apk','-I',android,'--manifest',build/'AndroidManifest.xml','--min-sdk-version','30','--target-sdk-version','35','--version-code','2','--version-name','0.1.1-pilot','-A',root/'app/src/main/assets',build/'resources.zip')
+run(bt/'aapt2','link','-o',build/'unsigned.apk','-I',android,'--manifest',build/'AndroidManifest.xml','--min-sdk-version','30','--target-sdk-version','35','--version-code',version_code,'--version-name',version_name,'-A',root/'app/src/main/assets',build/'resources.zip')
 with zipfile.ZipFile(build/'unsigned.apk','a') as z:
  for dex in (build/'dex').glob('*.dex'):z.write(dex,dex.name)
 run(bt/'zipalign','-f','-p','4',build/'unsigned.apk',build/'aligned.apk')

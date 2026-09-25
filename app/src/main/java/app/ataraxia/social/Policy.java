@@ -21,6 +21,9 @@ public final class Policy {
         String p = path(raw);
         return p.matches("^/(reel|reels|explore|tv)(/.*)?$");
     }
+    public static boolean blocked(String raw, boolean focused) {
+        return blocked(raw) || (focused && feed(raw));
+    }
     public static boolean exempt(String raw) {
         String p = path(raw);
         return p.matches("^/(direct|accounts|challenge|checkpoint|two_factor)(/.*)?$");
@@ -32,6 +35,19 @@ public final class Policy {
         for (String domain : new String[]{"doubleclick.net", "googlesyndication.com", "googleadservices.com"})
             if (host.equals(domain) || host.endsWith("." + domain)) return true;
         return false;
+    }
+    public static String profileName(String raw) {
+        if (raw == null) return null;
+        String name=raw.trim().replaceFirst("^@", "").toLowerCase(Locale.ROOT);
+        if (!name.matches("[a-z0-9_][a-z0-9_.]{0,29}") || name.contains("..") || name.endsWith(".")) return null;
+        for (String reserved : new String[]{"direct","accounts","challenge","checkpoint","two_factor","p","reel","reels","explore","tv","stories","about","developer","legal","privacy","web"})
+            if (reserved.equals(name)) return null;
+        return name;
+    }
+    /** Drop the embedded-WebView markers ("; wv" and "Version/4.0") from the system user agent. */
+    public static String browserUserAgent(String ua) {
+        if (ua == null) return null;
+        return ua.replace("; wv)", ")").replaceFirst(" Version/\\d+(\\.\\d+)* ", " ");
     }
     private Policy() { }
 }
