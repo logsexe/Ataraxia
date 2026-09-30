@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Still" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#F3EEE4</item>
+        <item name="android:colorBackground">#F3EEE4</item>
+        <item name="android:statusBarColor">#F3EEE4</item>
+        <item name="android:navigationBarColor">#F3EEE4</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:textColor">#171512</item>
+    </style>
+</resources>

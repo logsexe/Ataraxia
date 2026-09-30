@@ -19,7 +19,9 @@ public final class Policy {
     }
     public static boolean blocked(String raw) {
         String p = path(raw);
-        return p.matches("^/(reel|reels|explore|tv)(/.*)?$");
+        if (p.matches("^/(reel|reels|explore|tv|shop|shopping|live)(/.*)?$")) return true;
+        // A live broadcast on a profile. Post, inbox, and login paths are not live.
+        return p.matches("^/(?!(p|reel|reels|explore|tv|direct|accounts|stories)/)[^/]+/live(/.*)?$");
     }
     public static boolean exempt(String raw) {
         String p = path(raw);

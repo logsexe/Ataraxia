@@ -4,13 +4,18 @@
 
 [![Android CI](https://github.com/logsexe/Ataraxia/actions/workflows/android.yml/badge.svg)](https://github.com/logsexe/Ataraxia/actions/workflows/android.yml)
 
-An Instagram web client designed to make checking in finite. Free, MIT-licensed source. No developer backend, ads, analytics, subscription, device-admin, Accessibility, overlay, VPN or usage-access permissions. Not affiliated with Instagram or Meta.
+An Instagram web client designed to make checking in finite. On screen the product is **Still**: paper, a serif headline, and a phone you can put down. Free, MIT-licensed source. No developer backend, ads, analytics, subscription, device-admin, Accessibility, overlay, VPN or usage-access permissions. Not affiliated with Instagram or Meta.
+
+## Two surfaces
+
+- `web/` is a practice Instagram. Friends stay in one room. Famous people stay in Known. It never embeds instagram.com. Open `web/index.html` in a browser.
+- The Android app is the one you install. It opens Instagram’s own login inside the app. Still does not see the password. Reels, Explore, Shop, and Live never load. Time and post caps apply only there. Messages stay available after the limit.
 
 ## Install the pilot
 
-1. Build the pilot from source with Android Studio or download the test-signed APK from [Releases](https://github.com/logsexe/Ataraxia/releases). See [v0.1.1 installation and signing notes](docs/RELEASE-0.1.1.md).
+1. Build the pilot from source with Android Studio or download the test-signed APK from [Releases](https://github.com/logsexe/Ataraxia/releases). See [Still 0.2.0](docs/RELEASE-0.2.0.md). The [v0.1.1 notes](docs/RELEASE-0.1.1.md) still describe that earlier signing key.
 2. Allow installation from the browser/files app only when needed, install, and turn that installation permission back off afterwards. If your Owner policy disables installation in secondary users, install via Owner and use its “Install available apps” control instead.
-3. Open Ataraxia, read the pilot notice, and choose **Open Instagram inbox**.
+3. Open Still, read the first screen, and continue to Instagram’s own login. Then choose **Open Instagram inbox**.
 4. Log in on Instagram's own webpage with your usual username/password and 2FA. Facebook sign-in/pop-ups are not supported. The app does not provide a separate credential form.
 5. Try the inbox, open Feed, then test the shortest limits from Settings. Verify the feed is stopped and inbox remains accessible.
 
@@ -19,7 +24,7 @@ This is a pilot, not a production release or independently audited app. Keep the
 ## What it does
 
 - Inbox-first home screen and native navigation.
-- Blocks Instagram `/reel`, `/reels`, `/explore` and `/tv` routes; hides matching links inside the website.
+- Blocks Instagram `/reel`, `/reels`, `/explore`, `/tv`, `/shop`, `/shopping`, `/live`, and a profile’s `/live` route; hides matching links inside the website.
 - Defaults: 10 identified feed posts, 5 browsing minutes per session, 15 browsing minutes per day, 10-minute cooldown after a capped session.
 - Counters persist locally across app restarts. A local calendar-day change resets the daily time allowance. Login and direct-message routes remain exempt.
 - Best-effort filtering of recognised Sponsored/suggested labels in feed metadata (English and Afrikaans), plus a small explicit advertising-host blocklist.

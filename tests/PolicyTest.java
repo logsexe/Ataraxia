@@ -6,8 +6,12 @@ public class PolicyTest {
         check(Policy.internal("https://www.instagram.com/direct/inbox/"),"inbox allowed");
         check(Policy.internal("https://instagram.com:443/"),"canonical port allowed");
         for(String u:new String[]{"http://instagram.com/","https://instagram.com.evil.test/","https://instagram.com@evil.test/","https://evil.test@instagram.com/","https://www.instagram.com:444/","javascript:alert(1)","file:///etc/passwd","intent://instagram.com/","https://evilinstagram.com/","https://instagram.com\\@evil.test/"})check(!Policy.internal(u),"reject "+u);
-        for(String p:new String[]{"/reel/123/","/reels/","/explore/","/tv/abc/","/%72eels/","//reels/"})check(Policy.blocked("https://www.instagram.com"+p),"block "+p);
+        for(String p:new String[]{"/reel/123/","/reels/","/explore/","/tv/abc/","/%72eels/","//reels/","/shop/","/shopping/item","/live/","/live/broadcast/","/maya/live/","/maya/live"})check(Policy.blocked("https://www.instagram.com"+p),"block "+p);
         check(!Policy.blocked("https://www.instagram.com/reels_are_bad/"),"do not match unrelated profiles");
+        check(!Policy.blocked("https://www.instagram.com/liver/"),"do not match a profile named liver");
+        check(!Policy.blocked("https://www.instagram.com/shopfront/"),"do not match a profile named shopfront");
+        check(!Policy.blocked("https://www.instagram.com/p/live/"),"a post is not the live route");
+        check(!Policy.blocked("https://www.instagram.com/direct/inbox/"),"inbox is not a blocked route");
         check(Policy.exempt("https://www.instagram.com/direct/t/123/"),"messages exempt");
         check(Policy.exempt("https://www.instagram.com/accounts/login/"),"login exempt");
         check(!Policy.exempt("https://www.instagram.com/director/"),"similar profile is not exempt");

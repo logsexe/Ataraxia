@@ -11,11 +11,15 @@
   let limit = 500;
   const normalise = text => (text || '').replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
   const updateCap = () => document.documentElement.toggleAttribute('data-quiet-capped', isFeed() && seen.size >= limit);
-  const blockedPath = p => /^\/(reels?|explore|tv)(\/|$)/i.test(p.replace(/\/+/g, '/'));
+  const blockedPath = p => {
+    const n = p.replace(/\/+/g, '/');
+    if (/^\/(reels?|explore|tv|shop|shopping|live)(\/|$)/i.test(n)) return true;
+    return /^\/(?!(?:p|reels?|explore|tv|direct|accounts|stories)\/)[^/]+\/live(\/|$)/i.test(n);
+  };
   const isFeed = () => location.pathname === '/';
   const labels = new Set(['sponsored', 'geborg', 'geborgde', 'suggested for you', 'voorgestel vir jou']);
   const style = document.createElement('style');
-  style.textContent = '[data-quiet-hidden="true"]{display:none!important}html{scroll-behavior:auto!important}html[data-quiet-capped] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-capped]::after{content:"Session post limit reached. Use Inbox below.";position:fixed;inset:0;z-index:2147483647;background:#101916;color:#edf5ee;padding:48px 24px;font:18px sans-serif}';
+  style.textContent = '[data-quiet-hidden="true"]{display:none!important}html{scroll-behavior:auto!important}html[data-quiet-capped] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-capped]::after{content:"Enough for now. The inbox is still open.";position:fixed;inset:0;z-index:2147483647;background:#F3EEE4;color:#171512;padding:48px 24px;font:500 22px Georgia,serif}';
   (document.head || document.documentElement).appendChild(style);
   const hide = el => { if (el.dataset.quietHidden !== 'true') el.dataset.quietHidden = 'true'; };
   function scan() {

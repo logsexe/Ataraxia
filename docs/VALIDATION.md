@@ -22,3 +22,13 @@
 - No independent security audit, Play Store review or comprehensive ad-blocking claim.
 
 See PHONE-TEST-CHECKLIST.md before relying on the app or removing the official client.
+
+## 30 September 2026 — Still 0.2.0
+
+Checked on this machine with Temurin 17. Not a phone install, and not a logged-in Instagram session.
+
+- PolicyTest passed: 35 assertions, including Shop, shopping, Live, and a profile Live route. Profiles that only begin with those words, and a post shortcode, stay open. The inbox stays open.
+- BudgetTest passed: 9 assertions.
+- `gradlew :app:assembleDebug` succeeded with JDK 17, compile SDK 35, and build-tools 34. The debug APK is `app/build/outputs/apk/debug/app-debug.apk`. Badging: package `app.ataraxia.social`, versionCode 3, versionName 0.2.0, min SDK 30, target SDK 35, label Still, Internet only. No debuggable flag in the badging. It was not installed on a phone. Back on Android 13 and newer uses the platform back callback. Android 11 and 12 still use the older back method.
+- Practice checks passed, and the fast-scroll filter regression passed (12 assertions). In a 390px browser viewport: four room tabs, Friends and Known stay apart, a public-figure search stays out of Friends, a like and a comment have no counts, a reply stays in the thread, and Open Instagram is a new browser tab. The desktop clock moved from 0:00 to 0:01 beside the half-hour line.
+- The Playwright Chromium fixtures in `tests/filter.test.cjs` were not run here.

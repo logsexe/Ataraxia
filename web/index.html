@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#F3EEE4">
+  <title>Still</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="stage">
+    <div class="phone" data-chrome="onboard">
+      <div id="screen"></div>
+      <nav class="tabs" aria-label="Rooms">
+        <button type="button" data-tab="friends">Friends</button>
+        <button type="button" data-tab="known">Known</button>
+        <button type="button" data-tab="messages">Messages</button>
+        <button type="button" data-tab="you">You</button>
+      </nav>
+    </div>
+    <aside class="rail" aria-label="Time in Still">
+      <p class="kicker">Today</p>
+      <p class="clock" id="clock">0:00</p>
+      <p class="unit">in Still</p>
+      <div class="measure" aria-hidden="true"><i id="today-mark"></i></div>
+      <p class="note">A typical Instagram day runs about half an hour. The rest of the line is that day.</p>
+      <p class="kicker days-label">The last few days</p>
+      <div id="days"></div>
+    </aside>
+  </main>
+  <script src="logic.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

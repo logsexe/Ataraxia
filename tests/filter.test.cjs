@@ -7,7 +7,7 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  const browser=await chromium.launch({headless:true,executablePath:process.env.ATARAXIA_TEST_BROWSER || undefined,args:['--no-sandbox']});
  const page=await browser.newPage({viewport:{width:412,height:915}});
  const html=`<html><head><style>article {height:250px;width:380px;}body{margin:0}</style></head><body>
- <nav><a id="reels" href="/reels/">Reels</a><a id="explore" href="/explore/">Explore</a><a id="inbox" href="/direct/inbox/">Inbox</a></nav>
+ <nav><a id="reels" href="/reels/">Reels</a><a id="explore" href="/explore/">Explore</a><a id="shop" href="/shop/">Shop</a><a id="live" href="/maya/live/">Live</a><a id="friend" href="/maya/">Maya</a><a id="inbox" href="/direct/inbox/">Inbox</a></nav>
  <article id="ad"><header><span>Sponsored</span></header><a href="/p/Ad1/">Ad</a></article>
  <article id="first"><header><span>Friend</span></header><a href="/p/First1/">Photo</a><p>I dislike sponsored posts</p></article>
  <article id="second"><header><span>Friend 2</span></header><a href="/p/Second2/">Photo 2</a></article>
@@ -16,6 +16,9 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  await page.goto('https://www.instagram.com/'); await page.evaluate(script);
  assert.equal(await page.locator('#reels').isVisible(),false);
  assert.equal(await page.locator('#explore').isVisible(),false);
+ assert.equal(await page.locator('#shop').isVisible(),false);
+ assert.equal(await page.locator('#live').isVisible(),false);
+ assert.equal(await page.locator('#friend').isVisible(),true);
  assert.equal(await page.locator('#inbox').isVisible(),true);
  assert.equal(await page.locator('#ad').isVisible(),false);
  assert.equal(await page.locator('#first').isVisible(),true);

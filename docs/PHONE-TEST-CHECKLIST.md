@@ -6,7 +6,7 @@ Do not remove your existing Instagram app until these pass. Test in the intended
 - [ ] Open Home. Verify text and navigation at default and large font sizes, portrait and landscape.
 - [ ] Open Inbox. Log in using Instagram username/password and complete 2FA.
 - [ ] Confirm account identity and existing DM conversations; send a non-sensitive test message.
-- [ ] Verify Reels and Explore links are hidden. Try a Reel sent in a DM: navigation must be stopped.
+- [ ] Verify Reels, Explore, Shop, and Live links are hidden. Try a Reel or Live sent in a DM: navigation must be stopped and the inbox must remain open.
 - [ ] Open Feed. Set five posts/two minutes for testing. Check native counters.
 - [ ] When a cap is reached, Inbox remains accessible but Feed is stopped.
 - [ ] Close/reopen the app: it must not reset the session/cooldown or daily allowance.
