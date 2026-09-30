@@ -45,26 +45,26 @@ jobs:
       - name: Verify APK signature, identity and permissions
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Still-0.2.0.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Still-0.2.1.apk
           sdk_tools="$ANDROID_HOME/build-tools/35.0.0"
-          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Still-0.2.0.apk > dist/SIGNATURE.txt
-          "$sdk_tools/zipalign" -c -p 4 dist/Still-0.2.0.apk
-          "$sdk_tools/aapt" dump badging dist/Still-0.2.0.apk > dist/manifest.txt
+          "$sdk_tools/apksigner" verify --verbose --print-certs dist/Still-0.2.1.apk > dist/SIGNATURE.txt
+          "$sdk_tools/zipalign" -c -p 4 dist/Still-0.2.1.apk
+          "$sdk_tools/aapt" dump badging dist/Still-0.2.1.apk > dist/manifest.txt
           python3 - <<'PY'
           from pathlib import Path
           text = Path('dist/manifest.txt').read_text()
-          assert "package: name='app.ataraxia.social' versionCode='3' versionName='0.2.0'" in text
+          assert "package: name='app.ataraxia.social' versionCode='4' versionName='0.2.1'" in text
           permissions = [line for line in text.splitlines() if line.startswith('uses-permission:')]
           assert permissions == ["uses-permission: name='android.permission.INTERNET'"], permissions
           assert 'application-debuggable' not in text
           print('Verified identity, version, Internet-only permissions and non-debuggable manifest')
           PY
           cd dist
-          sha256sum Still-0.2.0.apk > SHA256SUMS.txt
+          sha256sum Still-0.2.1.apk > SHA256SUMS.txt
       - name: Upload verified pilot APK
         uses: actions/upload-artifact@v4
         with:
-          name: Still-0.2.0
+          name: Still-0.2.1
           path: dist/*
           if-no-files-found: error
   release:
@@ -78,19 +78,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: Still-0.2.0
+          name: Still-0.2.1
           path: dist
       - name: Publish immutable pilot prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.2.0 >/dev/null 2>&1; then
+          if gh release view v0.2.1 >/dev/null 2>&1; then
             echo 'This version is already published; leaving its assets unchanged.'
             exit 0
           fi
-          gh release create v0.2.0 \
+          gh release create v0.2.1 \
             --target "$GITHUB_SHA" \
-            --title 'Still 0.2.0' \
-            --notes-file docs/RELEASE-0.2.0.md \
+            --title 'Still 0.2.1' \
+            --notes-file docs/RELEASE-0.2.1.md \
             --prerelease \
-            dist/Still-0.2.0.apk dist/SHA256SUMS.txt dist/SIGNATURE.txt
+            dist/Still-0.2.1.apk dist/SHA256SUMS.txt dist/SIGNATURE.txt

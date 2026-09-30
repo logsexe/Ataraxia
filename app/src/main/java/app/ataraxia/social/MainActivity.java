@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
             long now = SystemClock.elapsedRealtime();
             long delta = Math.min(5000, Math.max(0, now - lastTick));
             lastTick = now;
-            String url = web.getUrl();
+            String url = web == null ? null : web.getUrl();
             if (browsing && Policy.internal(url)) {
                 if (Policy.blocked(url)) { rejectRoute(); }
                 else if (!Policy.exempt(url)) {
@@ -61,12 +61,6 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
-        WindowInsetsController bars = getWindow().getInsetsController();
-        if (bars != null) {
-            bars.setSystemBarsAppearance(
-                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
-        }
         display = face("fonts/fraunces.ttf", Typeface.SERIF);
         body = face("fonts/outfit.ttf", Typeface.SANS_SERIF);
         medium = face("fonts/outfit-medium.ttf", Typeface.SANS_SERIF);
@@ -85,7 +79,10 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(PAPER);
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets cut = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.ime());
-            v.setPadding(cut.left, cut.top, cut.right, cut.bottom);
+            if (v.getPaddingLeft() != cut.left || v.getPaddingTop() != cut.top
+                    || v.getPaddingRight() != cut.right || v.getPaddingBottom() != cut.bottom) {
+                v.setPadding(cut.left, cut.top, cut.right, cut.bottom);
+            }
             return WindowInsets.CONSUMED;
         });
         bar = new LinearLayout(this);
@@ -113,9 +110,15 @@ public class MainActivity extends Activity {
         content = new FrameLayout(this);
         content.setBackgroundColor(PAPER);
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
-        web = new WebView(this);
-        web.setBackgroundColor(PAPER);
-        content.addView(web, new FrameLayout.LayoutParams(-1, -1));
+        try {
+            web = new WebView(this);
+        } catch (RuntimeException failed) {
+            web = null;
+        }
+        if (web != null) {
+            web.setBackgroundColor(PAPER);
+            content.addView(web, new FrameLayout.LayoutParams(-1, -1));
+        }
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         panel = new LinearLayout(this);
@@ -134,10 +137,25 @@ public class MainActivity extends Activity {
         addNav("Settings", "settings", this::settings);
         root.addView(nav);
         setContentView(root);
+        WindowInsetsController bars = getWindow().getInsetsController();
+        if (bars != null) {
+            bars.setSystemBarsAppearance(
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) registerBack();
+        if (web == null) { showWebMissing(); return; }
         configureWeb();
         if (!prefs.getBoolean("intro", false)) showIntro();
         else showHome();
+    }
+
+    private void showWebMissing() {
+        place = "error";
+        chrome(false);
+        panel.removeAllViews();
+        panel.addView(headline("The browser is missing."));
+        panel.addView(bodyCopy("Still opens Instagram through the system browser. Enable Android System WebView, or Vanadium, then open Still again."));
     }
 
     private void configureWeb() {
