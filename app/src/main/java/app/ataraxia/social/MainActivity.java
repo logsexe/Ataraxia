@@ -32,8 +32,10 @@ public class MainActivity extends Activity {
     private String place = "";
     private String pageUrl = "";
     private LinearLayout roomsBar;
-    private final Set<String> openRooms = new HashSet<>();
+    private String room = "friends";
     private JSONObject people = new JSONObject();
+    private JSONObject sorted = new JSONObject();
+    private final Runnable sortedPull = this::pullSorted;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean active, browsing;
     private long lastTick;
@@ -110,9 +112,9 @@ public class MainActivity extends Activity {
         bar.addView(status, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         root.addView(bar);
         roomsBar = new LinearLayout(this);
-        roomsBar.setOrientation(LinearLayout.HORIZONTAL);
-        roomsBar.setGravity(Gravity.CENTER_VERTICAL);
+        roomsBar.setOrientation(LinearLayout.VERTICAL);
         roomsBar.setBackgroundColor(PAPER);
+        roomsBar.setPadding(dp(12), dp(8), dp(12), dp(8));
         roomsBar.setVisibility(View.GONE);
         root.addView(roomsBar, new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT));
         ruleTop = rule();
@@ -207,6 +209,7 @@ public class MainActivity extends Activity {
                 web.evaluateJavascript(configuredScript, value -> {
                     if (browsing && page == generation) web.setVisibility(View.VISIBLE);
                 });
+                scheduleSortedPull();
                 CookieManager.getInstance().flush();
             }
             @Override public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
@@ -317,6 +320,7 @@ public class MainActivity extends Activity {
         if (next.equals(pageUrl)) return;
         pageUrl = next;
         showRooms();
+        if (browsing) scheduleSortedPull();
     }
 
     private void rollDay() {
@@ -344,25 +348,32 @@ public class MainActivity extends Activity {
     }
 
     private void loadRooms() {
-        openRooms.clear();
-        String saved = prefs.getString("rooms", null);
-        if (saved == null) Collections.addAll(openRooms, "friends", "influencers", "celebrities");
-        else for (String part : saved.split(",")) if (!part.isEmpty()) openRooms.add(part);
+        String saved = prefs.getString("room", null);
+        if ("influencers".equals(saved)) room = "influencers";
+        else if (saved == null) {
+            String legacy = prefs.getString("rooms", "");
+            boolean friendsOn = legacy.isEmpty() || legacy.contains("friends");
+            boolean famousOn = legacy.contains("influencers") || legacy.contains("celebrities");
+            room = !friendsOn && famousOn ? "influencers" : "friends";
+        } else room = "friends";
         try { people = new JSONObject(prefs.getString("people", "{}")); }
         catch (JSONException e) { people = new JSONObject(); }
+        try { sorted = new JSONObject(prefs.getString("sorted", "{}")); }
+        catch (JSONException e) { sorted = new JSONObject(); }
     }
 
     private String roomsConfig() {
         JSONObject config = new JSONObject();
         try {
-            config.put("rooms", new JSONArray(openRooms));
+            config.put("rooms", new JSONArray().put(room));
             config.put("people", people);
+            config.put("sorted", sorted);
         } catch (JSONException ignored) { }
         return config.toString();
     }
 
     private void saveRooms() {
-        prefs.edit().putString("rooms", String.join(",", openRooms)).putString("people", people.toString()).apply();
+        prefs.edit().putString("room", room).putString("people", people.toString()).apply();
         if (web != null && browsing)
             web.evaluateJavascript("window.__ataraxiaStillness&&window.__ataraxiaStillness.configure(" + roomsConfig() + ")", null);
     }
@@ -375,50 +386,107 @@ public class MainActivity extends Activity {
         boolean profile = browsing && who != null;
         if (!feed && !profile) { roomsBar.setVisibility(View.GONE); return; }
         roomsBar.setVisibility(View.VISIBLE);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
         if (feed) {
-            roomCell("Friends", openRooms.contains("friends"), () -> toggleRoom("friends"));
-            roomCell("Influencers", openRooms.contains("influencers"), () -> toggleRoom("influencers"));
-            roomCell("Celebrities", openRooms.contains("celebrities"), () -> toggleRoom("celebrities"));
+            segment(row, "Friends", "friends".equals(room), () -> chooseRoom("friends"));
+            segment(row, "Influencers", "influencers".equals(room), () -> chooseRoom("influencers"));
+            roomsBar.addView(row, new LinearLayout.LayoutParams(-1, dp(44)));
+            TextView hint = text("Friends follow you. Influencers have 10,000 or more followers, or are verified and do not follow you.", 12, MUTED);
+            hint.setPadding(dp(4), dp(6), dp(4), 0);
+            roomsBar.addView(hint);
         } else {
             TextView name = text(who, 13, MUTED);
-            name.setPadding(dp(12), 0, dp(8), 0);
+            name.setPadding(dp(4), 0, dp(4), dp(6));
             name.setSingleLine(true);
             roomsBar.addView(name);
-            String filed = people.optString(who, "");
-            roomCell("Friend", "friend".equals(filed), () -> filePerson(who, "friend"));
-            roomCell("Influencer", "influencer".equals(filed), () -> filePerson(who, "influencer"));
-            roomCell("Celebrity", "celebrity".equals(filed), () -> filePerson(who, "celebrity"));
+            String filed = kindOf(who);
+            segment(row, "Friend", "friend".equals(filed), () -> filePerson(who, "friend"));
+            segment(row, "Influencer", "influencer".equals(filed), () -> filePerson(who, "influencer"));
+            roomsBar.addView(row, new LinearLayout.LayoutParams(-1, dp(44)));
+            TextView hint = text(people.has(who)
+                ? "Your mark overrides the sort."
+                : sorted.has(who)
+                    ? "Sorted from this profile. Tap the other side to change it."
+                    : "Not enough on the page to sort them yet.", 12, MUTED);
+            hint.setPadding(dp(4), dp(6), dp(4), 0);
+            roomsBar.addView(hint);
         }
     }
 
-    private void toggleRoom(String room) {
-        if (!openRooms.remove(room)) openRooms.add(room);
+    private String kindOf(String name) {
+        String manual = people.optString(name, "");
+        if ("celebrity".equals(manual)) manual = "influencer";
+        if ("friend".equals(manual) || "influencer".equals(manual)) return manual;
+        String auto = sorted.optString(name, "");
+        return "friend".equals(auto) || "influencer".equals(auto) ? auto : "";
+    }
+
+    private void scheduleSortedPull() {
+        handler.removeCallbacks(sortedPull);
+        handler.postDelayed(sortedPull, 900);
+    }
+
+    private void pullSorted() {
+        if (web == null || !browsing) return;
+        final int page = generation;
+        web.evaluateJavascript(
+            "JSON.stringify(window.__ataraxiaStillness ? window.__ataraxiaStillness.snapshot().sorted : {})",
+            raw -> {
+                if (!browsing || page != generation || raw == null || "null".equals(raw)) return;
+                try {
+                    Object parsed = new JSONTokener(raw).nextValue();
+                    if (!(parsed instanceof String)) return;
+                    JSONObject incoming = new JSONObject((String) parsed);
+                    JSONArray names = incoming.names();
+                    if (names == null) return;
+                    boolean changed = false;
+                    for (int i = 0; i < Math.min(names.length(), 500); i++) {
+                        String name = names.optString(i);
+                        String kind = incoming.optString(name);
+                        if (!name.matches("[a-z0-9._]{1,30}")) continue;
+                        if (!"friend".equals(kind) && !"influencer".equals(kind)) continue;
+                        if (!kind.equals(sorted.optString(name, ""))) {
+                            sorted.put(name, kind);
+                            changed = true;
+                        }
+                    }
+                    if (changed) {
+                        prefs.edit().putString("sorted", sorted.toString()).apply();
+                        showRooms();
+                    }
+                } catch (JSONException ignored) { }
+            });
+    }
+
+    private void chooseRoom(String next) {
+        if (next.equals(room)) return;
+        room = next;
         saveRooms();
         showRooms();
     }
 
     private void filePerson(String name, String kind) {
-        if (kind.equals(people.optString(name, ""))) people.remove(name);
+        String current = people.optString(name, "");
+        if ("celebrity".equals(current)) current = "influencer";
+        if (kind.equals(current)) people.remove(name);
         else try { people.put(name, kind); } catch (JSONException ignored) { }
         saveRooms();
         showRooms();
     }
 
-    private void roomCell(String label, boolean on, Runnable action) {
-        LinearLayout cell = new LinearLayout(this);
-        cell.setOrientation(LinearLayout.VERTICAL);
-        cell.setGravity(Gravity.CENTER_HORIZONTAL);
-        cell.setPadding(0, dp(8), 0, dp(6));
-        View line = new View(this);
-        line.setBackgroundColor(on ? SAGE : PAPER);
-        cell.addView(line, new LinearLayout.LayoutParams(dp(14), Math.max(1, dp(2))));
-        TextView t = text(label, 13, on ? INK : MUTED);
-        t.setTypeface(on ? medium : body);
-        t.setPadding(0, dp(4), 0, 0);
-        cell.addView(t);
-        cell.setOnClickListener(v -> action.run());
-        cell.setClickable(true);
-        roomsBar.addView(cell, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+    private void segment(LinearLayout row, String label, boolean on, Runnable action) {
+        TextView t = text(label, 15, on ? PAPER : INK);
+        t.setTypeface(medium);
+        t.setGravity(Gravity.CENTER);
+        t.setBackground(paperButton(on));
+        t.setMinHeight(dp(44));
+        t.setOnClickListener(v -> action.run());
+        t.setClickable(true);
+        t.setContentDescription(on ? "Showing " + label : "Show " + label);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(44), 1);
+        if (row.getChildCount() > 0) lp.leftMargin = dp(8);
+        row.addView(t, lp);
     }
 
     private void basePanel() {
@@ -472,7 +540,7 @@ public class MainActivity extends Activity {
         place = "home";
         chrome(true);
         panel.addView(headline("Friends in one room."));
-        panel.addView(bodyCopy("Open the inbox, or browse a little."));
+        panel.addView(bodyCopy("Open the inbox, or browse a little. The feed sorts friends from influencers."));
         space(8);
         button(panel, "Open Instagram inbox", true, () -> navigate(BASE + "/direct/inbox/"));
         button(panel, "Browse a little", false, this::openFeed);
@@ -519,7 +587,7 @@ public class MainActivity extends Activity {
         place = "settings";
         chrome(true);
         panel.addView(headline("Settings"));
-        panel.addView(bodyCopy("Open someone's profile, then file them as a friend, an influencer, or a celebrity. The feed row chooses which of those to keep."));
+        panel.addView(bodyCopy("A friend is someone who follows you. An influencer has 10,000 or more followers, or is verified and does not follow you. Anyone the page does not settle stays on both sides. Tap the other side on a profile if the sort is wrong."));
         choiceRow("Minutes a session", "sessionMinutes", new int[]{2, 5, 10}, 5);
         choiceRow("Minutes a day", "dailyMinutes", new int[]{5, 15, 30, 60}, 15);
         space(12);

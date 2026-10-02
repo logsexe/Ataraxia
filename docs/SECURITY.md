@@ -3,7 +3,7 @@
 This is an unaudited pilot. No app is a safe place for credentials solely because its source is available.
 
 - Internet is the only declared permission. No Services, exported data providers, receivers or deep links. Only the launcher Activity is exported.
-- No JavaScript-to-Java bridge. Native code polls a bounded JSON snapshot of post identifiers only; it does not accept privileged commands from webpage JavaScript.
+- No JavaScript-to-Java bridge. After a page loads, native code reads one bounded JSON snapshot: no post counters, and at most 500 usernames already on screen with the label friend or influencer. It does not accept commands from webpage JavaScript.
 - Exact Instagram hostname + HTTPS + standard-port allowlist for main-frame navigation; external HTTP(S) links require confirmation, other URI schemes are rejected. Policy tests include look-alike hosts, userinfo tricks, alternate ports and encoded blocked paths.
 - JavaScript and DOM storage are needed for Instagram. Cookies stay in WebView's private app data. Third-party cookies, cleartext traffic, mixed content, file/content access, pop-ups, microphone/camera web permissions and geolocation are disabled. TLS errors are cancelled, not overridden.
 - Android cloud backup and WebView debugging are disabled. The supplied APK has no debuggable manifest flag. No developer server, crash reporter, analytics SDK or remote code-update channel.

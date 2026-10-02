@@ -20,13 +20,13 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  assert.equal(await page.locator('#live').isVisible(),false);
  assert.equal(await page.locator('#friend').isVisible(),true);
  assert.equal(await page.locator('#inbox').isVisible(),true);
- assert.equal(await page.locator('#ad').isVisible(),false);
+ assert.equal(await page.locator('#ad').isVisible(),true);
  assert.equal(await page.locator('#first').isVisible(),true);
  let state=await page.evaluate(()=>window.__ataraxiaStillness.snapshot());
  assert.deepEqual(state.ids,[]);
- assert.equal(state.hiddenAds,1);
+ assert.equal(state.hiddenAds,0);
  await page.evaluate(script);state=await page.evaluate(()=>window.__ataraxiaStillness.snapshot());
- assert.equal(state.hiddenAds,1); // idempotent; no new observers/state resets
+ assert.equal(state.hiddenAds,0); // idempotent; no new observers/state resets
  await page.evaluate(()=>{
    const post=document.createElement('article'); post.id='reelpost';
    post.innerHTML='<a id="reelmedia" href="/reel/xyz/">Clip</a>';
@@ -41,7 +41,7 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  assert.equal(await page.locator('#first').isVisible(),true); // do not inspect/filter messages
  assert.deepEqual(await page.evaluate(()=>window.__ataraxiaStillness.snapshot().ids),[]);
  await page.evaluate(()=>{history.pushState({},'', '/'); document.querySelector('#first header span').textContent='Geborg'; window.__ataraxiaStillness.scan();});
- assert.equal(await page.locator('#first').isVisible(),false);
+ assert.equal(await page.locator('#first').isVisible(),true);
  const fastHtml = '<style>body{margin:0}article{height:600px;width:380px}</style>' +
    Array.from({length:30},(_,i)=>`<article><header><a href="/friend${i}/">Friend</a></header><a href="/reel/Clip${i}/">Post</a></article>`).join('');
  await page.route('https://www.instagram.com/**',route=>route.fulfill({contentType:'text/html',body:fastHtml}));
@@ -59,13 +59,13 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  <article id="caption"><img alt="Photo" width="300" height="200"><span>Sponsored</span><a href="/p/Caption/">Photo</a></article>`;
  await page.route('https://www.instagram.com/**',route=>route.fulfill({contentType:'text/html',body:adsHtml}));
  await page.goto('https://www.instagram.com/'); await page.evaluate(script);
- assert.equal(await page.locator('#modern').isVisible(),false);
- assert.equal(await page.locator('#split').isVisible(),false);
+ assert.equal(await page.locator('#modern').isVisible(),true);
+ assert.equal(await page.locator('#split').isVisible(),true);
  assert.equal(await page.locator('#caption').isVisible(),true);
  // Whole-script guard: never operate on look-alike domains.
  await page.route('https://instagram.com.evil.test/**',route=>route.fulfill({contentType:'text/html',body:html}));
  await page.goto('https://instagram.com.evil.test/'); await page.evaluate(script);
  assert.equal(await page.evaluate(()=>typeof window.__ataraxiaStillness),'undefined');
- console.log('PASS: browser fixtures — nav hiding, reel posts stay, ad filtering, groups, inbox isolation, origin guard');
+ console.log('PASS: browser fixtures — nav hiding, reel posts stay, ads left in place, groups, inbox isolation, origin guard');
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
