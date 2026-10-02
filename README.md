@@ -13,7 +13,7 @@ An Instagram web client designed to make checking in finite. On screen the produ
 
 ## Install the pilot
 
-1. Build the pilot from source with Android Studio or download the test-signed APK from [Releases](https://github.com/logsexe/Ataraxia/releases). See [Still 0.2.1](docs/RELEASE-0.2.1.md). The [v0.1.1 notes](docs/RELEASE-0.1.1.md) still describe that earlier signing key.
+1. Build the pilot from source with Android Studio or download the test-signed APK from [Releases](https://github.com/logsexe/Ataraxia/releases). See [Still 0.2.2](docs/RELEASE-0.2.2.md). The [v0.1.1 notes](docs/RELEASE-0.1.1.md) still describe that earlier signing key.
 2. Allow installation from the browser/files app only when needed, install, and turn that installation permission back off afterwards. If your Owner policy disables installation in secondary users, install via Owner and use its “Install available apps” control instead.
 3. Open Still, read the first screen, and continue to Instagram’s own login. Then choose **Open Instagram inbox**.
 4. Log in on Instagram's own webpage with your usual username/password and 2FA. Facebook sign-in/pop-ups are not supported. The app does not provide a separate credential form.

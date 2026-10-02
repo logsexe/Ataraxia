@@ -18,6 +18,13 @@ public class PolicyTest {
         check(Policy.adHost("ads.doubleclick.net"),"ad subdomain blocked");
         check(!Policy.adHost("notdoubleclick.net"),"boundary required");
         check(!Policy.adHost("scontent.cdninstagram.com"),"media remains available");
+        check("maya".equals(Policy.profileName("https://www.instagram.com/maya/")),"profile name");
+        check("ada.b".equals(Policy.profileName("https://www.instagram.com/Ada.b")),"profile case folds");
+        check(Policy.profileName("https://www.instagram.com/reels/") == null,"reels tab is not a profile");
+        check(Policy.profileName("https://www.instagram.com/p/abc/") == null,"a post is not a profile");
+        check(Policy.profileName("https://www.instagram.com/explore/") == null,"explore is not a profile");
+        check("maya".equals(Policy.profileName("https://www.instagram.com/maya/reels/")),"profile reels tab still names the person");
+        check(Policy.profileName("https://www.instagram.com/maya/live/") == null,"a live path is not a filing page");
         System.out.println("PASS: "+count+" navigation/security policy assertions");
     }
 }

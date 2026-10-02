@@ -23,34 +23,36 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  assert.equal(await page.locator('#ad').isVisible(),false);
  assert.equal(await page.locator('#first').isVisible(),true);
  let state=await page.evaluate(()=>window.__ataraxiaStillness.snapshot());
- assert.deepEqual(state.ids,['First1','Second2']);
+ assert.deepEqual(state.ids,[]);
  assert.equal(state.hiddenAds,1);
  await page.evaluate(script);state=await page.evaluate(()=>window.__ataraxiaStillness.snapshot());
  assert.equal(state.hiddenAds,1); // idempotent; no new observers/state resets
- await page.evaluate(()=>{const a=document.createElement('a');a.id='dynamic';a.href='/reel/xyz/';a.textContent='Watch';document.body.append(a);});
+ await page.evaluate(()=>{
+   const post=document.createElement('article'); post.id='reelpost';
+   post.innerHTML='<a id="reelmedia" href="/reel/xyz/">Clip</a>';
+   document.body.append(post);
+   const a=document.createElement('a'); a.id='dynamic'; a.href='/explore/'; a.textContent='Explore';
+   document.body.append(a);
+ });
  await page.waitForFunction(()=>document.querySelector('#dynamic').dataset.quietHidden==='true');
+ assert.equal(await page.locator('#reelpost').isVisible(),true);
+ assert.equal(await page.locator('#reelmedia').isVisible(),true);
  await page.evaluate(()=>{history.pushState({},'', '/direct/inbox/'); document.querySelector('#first header span').textContent='Sponsored'; window.__ataraxiaStillness.scan();});
  assert.equal(await page.locator('#first').isVisible(),true); // do not inspect/filter messages
  assert.deepEqual(await page.evaluate(()=>window.__ataraxiaStillness.snapshot().ids),[]);
  await page.evaluate(()=>{history.pushState({},'', '/'); document.querySelector('#first header span').textContent='Geborg'; window.__ataraxiaStillness.scan();});
  assert.equal(await page.locator('#first').isVisible(),false);
- // Real-layout regression: posts skipped entirely between scroll events still count.
  const fastHtml = '<style>body{margin:0}article{height:600px;width:380px}</style>' +
-   Array.from({length:30},(_,i)=>`<article><header>Friend</header><a href="/p/Fast${i}/">Post</a></article>`).join('');
+   Array.from({length:30},(_,i)=>`<article><header><a href="/friend${i}/">Friend</a></header><a href="/reel/Clip${i}/">Post</a></article>`).join('');
  await page.route('https://www.instagram.com/**',route=>route.fulfill({contentType:'text/html',body:fastHtml}));
  await page.goto('https://www.instagram.com/'); await page.evaluate(script);
  await page.evaluate(()=>{window.scrollTo(0,6000);window.dispatchEvent(new Event('scroll'));});
- let fast = await page.evaluate(()=>window.__ataraxiaStillness.snapshot());
- assert.equal(fast.ids.length,12); // posts 0..11 intersect the swept viewport
- await page.evaluate(()=>{window.scrollTo(0,0);window.dispatchEvent(new Event('scroll'));});
- assert.equal((await page.evaluate(()=>window.__ataraxiaStillness.snapshot())).ids.length,12);
- await page.goto('https://www.instagram.com/'); await page.evaluate(script);
- await page.evaluate(()=>{window.__ataraxiaStillness.configure({limit:5,ids:[]});window.scrollTo(0,6000);window.dispatchEvent(new Event('scroll'));});
- assert.equal((await page.evaluate(()=>window.__ataraxiaStillness.snapshot())).ids.length,5);
- assert.equal(await page.locator('html').getAttribute('data-quiet-capped'),'');
- assert.equal(await page.locator('article').first().isVisible(),false);
- await page.evaluate(()=>{history.pushState({},'', '/direct/inbox/');window.__ataraxiaStillness.scan();});
  assert.equal(await page.locator('html').getAttribute('data-quiet-capped'),null);
+ assert.equal(await page.locator('article').first().isVisible(),true);
+ assert.equal(await page.locator('a[href="/reel/Clip0/"]').isVisible(),true);
+ await page.evaluate(()=>window.__ataraxiaStillness.configure({rooms:['friends'],people:{friend1:'celebrity'}}));
+ assert.equal(await page.locator('article').nth(1).isVisible(),false);
+ assert.equal(await page.locator('article').first().isVisible(),true);
  // Accessible metadata outside a header, split labels, and caption preservation.
  const adsHtml = `<article id="modern" role="article"><span aria-label="Sponsored">Sponsor</span><img alt="Photo" width="300" height="200"><a href="/p/Modern/">Photo</a></article>
  <article id="split"><span><span>Spon</span><span>sored</span></span><img alt="Photo" width="300" height="200"><a href="/p/Split/">Photo</a></article>
@@ -64,6 +66,6 @@ const script = fs.readFileSync(path.join(__dirname,'../app/src/main/assets/filte
  await page.route('https://instagram.com.evil.test/**',route=>route.fulfill({contentType:'text/html',body:html}));
  await page.goto('https://instagram.com.evil.test/'); await page.evaluate(script);
  assert.equal(await page.evaluate(()=>typeof window.__ataraxiaStillness),'undefined');
- console.log('PASS: browser fixtures — route hiding, dynamic content, ad filtering, caption preservation, unique counting, idempotence, inbox isolation, Afrikaans label, origin guard, fast scroll, immediate cap, split/accessible ad metadata');
+ console.log('PASS: browser fixtures — nav hiding, reel posts stay, ad filtering, groups, inbox isolation, origin guard');
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});

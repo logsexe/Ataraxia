@@ -1,86 +1,107 @@
-/* Ataraxia 0.1.1 — local Instagram rules. No network calls, credentials or message collection. */
+/* Still — local Instagram rules. No network calls, credentials, or message collection.
+   Does not count posts and does not listen to scroll. Hiding a post link was leaving
+   the empty media box behind and shoving the feed around. */
 (function () {
   'use strict';
   if (window.top !== window || !/^https:\/\/(www\.)?instagram\.com(?::443)?\//i.test(location.href)) return;
   if (window.__ataraxiaStillness) { window.__ataraxiaStillness.scan(); return; }
-  const seen = new Set();
   let hiddenAds = 0;
-  let scheduled = false;
-  let previousY = null;
-  let previousBounds = new WeakMap();
-  let limit = 500;
+  let scanTimer = 0;
+  let rooms = new Set(['friends', 'influencers', 'celebrities']);
+  let people = {};
   const normalise = text => (text || '').replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const updateCap = () => document.documentElement.toggleAttribute('data-quiet-capped', isFeed() && seen.size >= limit);
-  const blockedPath = p => {
-    const n = p.replace(/\/+/g, '/');
-    if (/^\/(reels?|explore|tv|shop|shopping|live)(\/|$)/i.test(n)) return true;
-    return /^\/(?!(?:p|reels?|explore|tv|direct|accounts|stories)\/)[^/]+\/live(\/|$)/i.test(n);
-  };
+  const reserved = new Set(['p', 'reel', 'reels', 'explore', 'tv', 'shop', 'shopping', 'live', 'direct', 'accounts', 'stories', 'about', 'legal', 'privacy']);
+  const roomOf = { friend: 'friends', influencer: 'influencers', celebrity: 'celebrities' };
   const isFeed = () => location.pathname === '/';
   const labels = new Set(['sponsored', 'geborg', 'geborgde', 'suggested for you', 'voorgestel vir jou']);
   const style = document.createElement('style');
-  style.textContent = '[data-quiet-hidden="true"]{display:none!important}html{scroll-behavior:auto!important}html[data-quiet-capped] body{visibility:hidden!important;pointer-events:none!important}html[data-quiet-capped]::after{content:"Enough for now. The inbox is still open.";position:fixed;inset:0;z-index:2147483647;background:#F3EEE4;color:#171512;padding:48px 24px;font:500 22px Georgia,serif}';
+  style.textContent = '[data-quiet-hidden="true"]{display:none!important;height:0!important;min-height:0!important;max-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important;border:0!important}html{scroll-behavior:auto!important}';
   (document.head || document.documentElement).appendChild(style);
-  const hide = el => { if (el.dataset.quietHidden !== 'true') el.dataset.quietHidden = 'true'; };
-  function scan() {
-    scheduled = false;
-    for (const a of document.querySelectorAll('a[href]')) {
+  const navPath = p => {
+    const n = (p || '').replace(/\/+/g, '/');
+    if (/^\/(reels|explore|tv|shop|shopping|live)(\/|$)/i.test(n)) return true;
+    return /^\/(?!(?:p|reel|reels|explore|tv|direct|accounts|stories)\/)[^/]+\/live(\/|$)/i.test(n);
+  };
+  function conceal(el) {
+    if (!el || el.dataset.quietHidden === 'true') return;
+    el.dataset.quietHidden = 'true';
+    // Collapse only a one-child slot. A wider parent is the feed column, and hiding it blanks the page.
+    const parent = el.parentElement;
+    if (!parent || parent === document.body || parent === document.documentElement || parent.childElementCount !== 1) return;
+    const posts = parent.querySelectorAll('article,[role="article"]');
+    if (posts.length === 1 && posts[0].dataset.quietHidden === 'true') parent.dataset.quietHidden = 'true';
+  }
+  function reveal(el) {
+    if (!el) return;
+    if (el.dataset.quietHidden === 'true') delete el.dataset.quietHidden;
+    let parent = el.parentElement;
+    for (let depth = 0; depth < 6 && parent && parent !== document.body && parent !== document.documentElement; depth++) {
+      if (parent.dataset.quietHidden !== 'true') break;
+      delete parent.dataset.quietHidden;
+      parent = parent.parentElement;
+    }
+  }
+  function author(article) {
+    let found = '';
+    for (const a of article.querySelectorAll('a[href]')) {
+      const href = a.getAttribute && a.getAttribute('href');
+      if (!href) continue;
       try {
-        const u = new URL(a.getAttribute('href'), location.href);
-        if (/(^|\.)instagram\.com$/i.test(u.hostname) && blockedPath(u.pathname)) hide(a);
+        const part = new URL(href, location.href).pathname.toLowerCase().match(/^\/([a-z0-9._]{1,30})\/?$/);
+        if (!part || reserved.has(part[1])) continue;
+        found = part[1];
+        break;
       } catch (_) { }
     }
-    // Never inspect message bodies: sponsored/suggestion filtering is restricted to the home feed.
-    if (!isFeed()) { previousY = null; previousBounds = new WeakMap(); updateCap(); return; }
-    const currentY = window.scrollY;
-    const low = Math.min(previousY === null ? currentY : previousY, currentY) + 80;
-    const high = Math.max(previousY === null ? currentY : previousY, currentY) + innerHeight;
-    previousY = currentY;
-    for (const article of document.querySelectorAll('article,[role="article"]')) {
-      let sponsored = false;
-      // Match metadata before the main media, never arbitrary caption text.
-      const media = article.querySelector('video, img:not([alt*="profile" i])');
-      for (const el of article.querySelectorAll('header, header span, header a, span, [aria-label], a[href*="/ads/"]')) {
-        const rect = el.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) continue;
-        const header = el.closest('header');
-        const beforeMedia = media && Boolean(el.compareDocumentPosition(media) & Node.DOCUMENT_POSITION_FOLLOWING)
-          && !el.contains(media);
-        if (!header && !beforeMedia) continue;
-        const text = normalise(el.textContent);
-        const aria = normalise(el.getAttribute('aria-label'));
-        if (labels.has(text) || labels.has(aria)) { sponsored = true; break; }
-      }
-      if (sponsored && article.dataset.quietHidden !== 'true') { hide(article); hiddenAds++; }
-      if (article.dataset.quietHidden === 'true') continue;
-      const bounds = article.getBoundingClientRect();
-      const prior = previousBounds.get(article);
-      previousBounds.set(article, {top:bounds.top, bottom:bounds.bottom});
-      const crossed = prior && ((prior.top >= innerHeight && bounds.bottom <= 80)
-        || (prior.bottom <= 80 && bounds.top >= innerHeight));
-      if (bounds.width <= 0 || bounds.height <= 0) continue;
-      if (!crossed && (bounds.bottom + currentY <= low || bounds.top + currentY >= high)) continue;
-      const link = article.querySelector('a[href^="/p/"],a[href*="instagram.com/p/"],a[href^="/reel/"]');
-      if (link) {
-        try {
-          const match = new URL(link.href, location.href).pathname.match(/^\/(?:p|reel)\/([A-Za-z0-9_-]{1,80})(?:\/|$)/);
-          if (match && seen.size < limit) seen.add(match[1]);
-        } catch (_) { }
-      }
-    }
-    updateCap();
+    return found;
   }
-  function queueScan() { if (!scheduled) { scheduled = true; requestAnimationFrame(scan); } }
-  new MutationObserver(queueScan).observe(document.documentElement, {subtree:true, childList:true, attributes:true, characterData:true, attributeFilter:['href','aria-label']});
-  // Read geometry on the scroll event: a deferred frame can lose a fast swipe.
-  addEventListener('scroll', scan, {passive:true, capture:true});
+  function sponsored(article) {
+    const media = article.querySelector('video, img:not([alt*="profile" i])');
+    for (const el of article.querySelectorAll('header, header span, header a, span, [aria-label], a[href*="/ads/"]')) {
+      const header = el.closest && el.closest('header');
+      const beforeMedia = media && el.compareDocumentPosition && (el.compareDocumentPosition(media) & Node.DOCUMENT_POSITION_FOLLOWING) && !(el.contains && el.contains(media));
+      if (!header && !beforeMedia) continue;
+      const text = normalise(el.textContent);
+      const aria = normalise(el.getAttribute && el.getAttribute('aria-label'));
+      if (labels.has(text) || labels.has(aria)) return true;
+    }
+    return false;
+  }
+  function scan() {
+    clearTimeout(scanTimer);
+    scanTimer = 0;
+    for (const a of document.querySelectorAll('a[href]')) {
+      if (a.closest && a.closest('article,[role="article"]')) continue;
+      try {
+        const u = new URL(a.getAttribute('href'), location.href);
+        if (/(^|\.)instagram\.com$/i.test(u.hostname) && navPath(u.pathname)) conceal(a);
+      } catch (_) { }
+    }
+    if (!isFeed()) return;
+    for (const article of document.querySelectorAll('article,[role="article"]')) {
+      if (sponsored(article)) {
+        if (article.dataset.quietHidden !== 'true') { conceal(article); hiddenAds++; }
+        continue;
+      }
+      const name = author(article);
+      const filed = people[name];
+      const room = roomOf[filed];
+      if (room && !rooms.has(room)) conceal(article);
+      else reveal(article);
+    }
+  }
+  function queueScan() {
+    clearTimeout(scanTimer);
+    scanTimer = setTimeout(scan, 250);
+  }
+  new MutationObserver(queueScan).observe(document.documentElement, { subtree: true, childList: true });
   addEventListener('popstate', queueScan);
   document.addEventListener('click', e => {
     const a = e.target.closest && e.target.closest('a[href]');
     if (!a) return;
     try {
       const u = new URL(a.href, location.href);
-      if (/(^|\.)instagram\.com$/i.test(u.hostname) && blockedPath(u.pathname)) {
+      if (/(^|\.)instagram\.com$/i.test(u.hostname) && navPath(u.pathname)) {
         e.preventDefault(); e.stopImmediatePropagation();
       }
     } catch (_) { }
@@ -88,11 +109,11 @@
   window.__ataraxiaStillness = {
     scan,
     configure: config => {
-      limit = Math.max(1, Math.min(500, Number(config.limit) || 10));
-      for (const id of (config.ids || [])) if (/^[A-Za-z0-9_-]{1,80}$/.test(id)) seen.add(id);
+      if (config && Array.isArray(config.rooms)) rooms = new Set(config.rooms);
+      if (config && config.people && typeof config.people === 'object') people = config.people;
       scan();
     },
-    snapshot: () => ({ ids: isFeed() ? Array.from(seen).slice(0,500) : [], hiddenAds, feed:isFeed() })
+    snapshot: () => ({ ids: [], hiddenAds, feed: isFeed() })
   };
   scan();
 })();

@@ -28,6 +28,17 @@ public final class Policy {
         return p.matches("^/(direct|accounts|challenge|checkpoint|two_factor)(/.*)?$");
     }
     public static boolean feed(String raw) { return path(raw).equals("/"); }
+    /** A profile path, or null. Reserved sections such as /reel/ and /explore/ are not profiles. */
+    public static String profileName(String raw) {
+        String p = path(raw);
+        if (p == null || !p.matches("^/[a-z0-9._]{1,30}(/(reels|tagged|saved)/?)?/?$")) return null;
+        String name = p.substring(1);
+        int slash = name.indexOf('/');
+        if (slash >= 0) name = name.substring(0, slash);
+        if (name.matches("^(p|reel|reels|explore|tv|shop|shopping|live|direct|accounts|stories|about|legal|privacy)$"))
+            return null;
+        return name;
+    }
     public static boolean adHost(String host) {
         if (host == null) return false;
         host = host.toLowerCase(Locale.ROOT);

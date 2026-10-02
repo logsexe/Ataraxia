@@ -30,12 +30,15 @@ public class MainActivity extends Activity {
     private View overlay;
     private Typeface display, body, medium;
     private String place = "";
+    private String pageUrl = "";
+    private LinearLayout roomsBar;
+    private final Set<String> openRooms = new HashSet<>();
+    private JSONObject people = new JSONObject();
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private boolean active, browsing, waitingSnapshot;
+    private boolean active, browsing;
     private long lastTick;
     private String script;
     private ValueCallback<Uri[]> fileCallback;
-    private final Set<String> seen = new HashSet<>();
     private int generation;
     private final Runnable ticker = new Runnable() {
         public void run() {
@@ -52,7 +55,6 @@ public class MainActivity extends Activity {
                         .putLong("sessionMs", prefs.getLong("sessionMs", 0) + delta).apply();
                     if (limited()) showLimit();
                 }
-                if (browsing && !waitingSnapshot && Policy.feed(url)) pollPosts();
             }
             if (status != null) status.setText(summary());
             handler.postDelayed(this, 1000);
@@ -65,8 +67,10 @@ public class MainActivity extends Activity {
         body = face("fonts/outfit.ttf", Typeface.SANS_SERIF);
         medium = face("fonts/outfit-medium.ttf", Typeface.SANS_SERIF);
         prefs = getSharedPreferences("quiet-local", MODE_PRIVATE);
+        loadRooms();
+        if (!prefs.getBoolean("scrollFixed", false))
+            prefs.edit().putBoolean("scrollFixed", true).putLong("sessionMs", 0).putLong("cooldown", 0).putLong("dailyMs", 0).apply();
         rollDay();
-        seen.addAll(prefs.getStringSet("seen", Collections.emptySet()));
         try (InputStream in = getAssets().open("filter.js")) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buffer = new byte[8192]; int count;
@@ -105,6 +109,12 @@ public class MainActivity extends Activity {
         status.setMaxLines(2);
         bar.addView(status, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         root.addView(bar);
+        roomsBar = new LinearLayout(this);
+        roomsBar.setOrientation(LinearLayout.HORIZONTAL);
+        roomsBar.setGravity(Gravity.CENTER_VERTICAL);
+        roomsBar.setBackgroundColor(PAPER);
+        roomsBar.setVisibility(View.GONE);
+        root.addView(roomsBar, new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT));
         ruleTop = rule();
         root.addView(ruleTop, new LinearLayout.LayoutParams(-1, Math.max(1, dp(1))));
         content = new FrameLayout(this);
@@ -175,21 +185,32 @@ public class MainActivity extends Activity {
                 return !allowNavigation(request.getUrl().toString());
             }
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap icon) {
-                generation++; waitingSnapshot = false;
+                generation++;
                 if (!Policy.internal(url)) { web.stopLoading(); showHome(); return; }
                 if (Policy.blocked(url)) { rejectRoute(); return; }
                 if (!Policy.exempt(url) && limited()) { web.stopLoading(); showLimit(); return; }
-                if (browsing) web.setVisibility(View.INVISIBLE);
+                notePage(url);
+                if (browsing) {
+                    web.setVisibility(View.INVISIBLE);
+                    final int page = generation;
+                    handler.postDelayed(() -> {
+                        if (browsing && page == generation && web != null) web.setVisibility(View.VISIBLE);
+                    }, 1500);
+                }
             }
             @Override public void onPageFinished(WebView view, String url) {
+                notePage(url);
                 if (!browsing || !Policy.internal(url) || Policy.blocked(url)) return;
                 final int page = generation;
-                String configuredScript = script + "\nwindow.__ataraxiaStillness && window.__ataraxiaStillness.configure({limit:"
-                    + prefs.getInt("postLimit", 10) + ",ids:" + new JSONArray(new ArrayList<>(seen)).toString() + "});";
+                String configuredScript = script + "\nwindow.__ataraxiaStillness && window.__ataraxiaStillness.configure("
+                    + roomsConfig() + ");";
                 web.evaluateJavascript(configuredScript, value -> {
                     if (browsing && page == generation) web.setVisibility(View.VISIBLE);
                 });
                 CookieManager.getInstance().flush();
+            }
+            @Override public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+                notePage(url);
             }
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
                 if (request.isForMainFrame() && browsing) showError("Instagram could not load. Check the connection, then try the inbox.");
@@ -291,25 +312,11 @@ public class MainActivity extends Activity {
 
     private void openFeed() { refreshSession(); if (limited()) showLimit(); else navigate(BASE + "/"); }
 
-    private void pollPosts() {
-        waitingSnapshot = true;
-        final int page = generation;
-        web.evaluateJavascript("JSON.stringify(window.__ataraxiaStillness ? window.__ataraxiaStillness.snapshot() : null)", raw -> {
-            waitingSnapshot = false;
-            if (!browsing || page != generation || !Policy.internal(web.getUrl()) || !Policy.feed(web.getUrl())) return;
-            try {
-                Object parsed = new JSONTokener(raw).nextValue();
-                if (!(parsed instanceof String)) return;
-                JSONObject obj = new JSONObject((String) parsed);
-                JSONArray ids = obj.optJSONArray("ids");
-                if (ids != null) for (int i = 0; i < Math.min(ids.length(), 500); i++) {
-                    String id = ids.optString(i);
-                    if (id.matches("[A-Za-z0-9_-]{1,80}")) seen.add(id);
-                }
-                prefs.edit().putStringSet("seen", new HashSet<>(seen)).apply();
-                if (limited()) showLimit();
-            } catch (Exception ignored) { /* Unrecognised markup: native time cap still applies. */ }
-        });
+    private void notePage(String url) {
+        String next = url == null ? "" : url;
+        if (next.equals(pageUrl)) return;
+        pageUrl = next;
+        showRooms();
     }
 
     private void rollDay() {
@@ -322,31 +329,107 @@ public class MainActivity extends Activity {
         long until = prefs.getLong("cooldown", 0);
         if (until > 0 && System.currentTimeMillis() >= until) {
             prefs.edit().putLong("sessionMs", 0).putLong("cooldown", 0).remove("seen").apply();
-            seen.clear();
         }
     }
 
     private boolean limited() {
-        return Budget.limited(prefs.getLong("dailyMs", 0), prefs.getLong("sessionMs", 0), seen.size(),
+        return Budget.limited(prefs.getLong("dailyMs", 0), prefs.getLong("sessionMs", 0), 0,
             prefs.getInt("dailyMinutes", 15), prefs.getInt("sessionMinutes", 5), prefs.getInt("postLimit", 10),
             prefs.getLong("cooldown", 0), System.currentTimeMillis());
     }
 
     private String summary() {
         long remaining = Math.max(0, prefs.getInt("dailyMinutes", 15) * 60000L - prefs.getLong("dailyMs", 0));
-        return (remaining / 60000) + "m " + String.format(Locale.US, "%02d", (remaining / 1000) % 60)
-            + "s left today  ·  " + seen.size() + " / " + prefs.getInt("postLimit", 10) + " posts";
+        return (remaining / 60000) + "m " + String.format(Locale.US, "%02d", (remaining / 1000) % 60) + "s left today";
+    }
+
+    private void loadRooms() {
+        openRooms.clear();
+        String saved = prefs.getString("rooms", null);
+        if (saved == null) Collections.addAll(openRooms, "friends", "influencers", "celebrities");
+        else for (String part : saved.split(",")) if (!part.isEmpty()) openRooms.add(part);
+        try { people = new JSONObject(prefs.getString("people", "{}")); }
+        catch (JSONException e) { people = new JSONObject(); }
+    }
+
+    private String roomsConfig() {
+        JSONObject config = new JSONObject();
+        try {
+            config.put("rooms", new JSONArray(openRooms));
+            config.put("people", people);
+        } catch (JSONException ignored) { }
+        return config.toString();
+    }
+
+    private void saveRooms() {
+        prefs.edit().putString("rooms", String.join(",", openRooms)).putString("people", people.toString()).apply();
+        if (web != null && browsing)
+            web.evaluateJavascript("window.__ataraxiaStillness&&window.__ataraxiaStillness.configure(" + roomsConfig() + ")", null);
+    }
+
+    private void showRooms() {
+        if (roomsBar == null) return;
+        roomsBar.removeAllViews();
+        String who = Policy.profileName(pageUrl);
+        boolean feed = browsing && Policy.feed(pageUrl);
+        boolean profile = browsing && who != null;
+        if (!feed && !profile) { roomsBar.setVisibility(View.GONE); return; }
+        roomsBar.setVisibility(View.VISIBLE);
+        if (feed) {
+            roomCell("Friends", openRooms.contains("friends"), () -> toggleRoom("friends"));
+            roomCell("Influencers", openRooms.contains("influencers"), () -> toggleRoom("influencers"));
+            roomCell("Celebrities", openRooms.contains("celebrities"), () -> toggleRoom("celebrities"));
+        } else {
+            TextView name = text(who, 13, MUTED);
+            name.setPadding(dp(12), 0, dp(8), 0);
+            name.setSingleLine(true);
+            roomsBar.addView(name);
+            String filed = people.optString(who, "");
+            roomCell("Friend", "friend".equals(filed), () -> filePerson(who, "friend"));
+            roomCell("Influencer", "influencer".equals(filed), () -> filePerson(who, "influencer"));
+            roomCell("Celebrity", "celebrity".equals(filed), () -> filePerson(who, "celebrity"));
+        }
+    }
+
+    private void toggleRoom(String room) {
+        if (!openRooms.remove(room)) openRooms.add(room);
+        saveRooms();
+        showRooms();
+    }
+
+    private void filePerson(String name, String kind) {
+        if (kind.equals(people.optString(name, ""))) people.remove(name);
+        else try { people.put(name, kind); } catch (JSONException ignored) { }
+        saveRooms();
+        showRooms();
+    }
+
+    private void roomCell(String label, boolean on, Runnable action) {
+        LinearLayout cell = new LinearLayout(this);
+        cell.setOrientation(LinearLayout.VERTICAL);
+        cell.setGravity(Gravity.CENTER_HORIZONTAL);
+        cell.setPadding(0, dp(8), 0, dp(6));
+        View line = new View(this);
+        line.setBackgroundColor(on ? SAGE : PAPER);
+        cell.addView(line, new LinearLayout.LayoutParams(dp(14), Math.max(1, dp(2))));
+        TextView t = text(label, 13, on ? INK : MUTED);
+        t.setTypeface(on ? medium : body);
+        t.setPadding(0, dp(4), 0, 0);
+        cell.addView(t);
+        cell.setOnClickListener(v -> action.run());
+        cell.setClickable(true);
+        roomsBar.addView(cell, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
     }
 
     private void basePanel() {
         generation++;
         browsing = false;
-        waitingSnapshot = false;
         dismissOverlay();
         web.setVisibility(View.GONE);
         web.onPause();
         ((View) panel.getTag()).setVisibility(View.VISIBLE);
         panel.removeAllViews();
+        showRooms();
     }
 
     private void chrome(boolean show) {
@@ -355,6 +438,7 @@ public class MainActivity extends Activity {
         ruleTop.setVisibility(v);
         ruleBottom.setVisibility(v);
         nav.setVisibility(v);
+        if (!show && roomsBar != null) roomsBar.setVisibility(View.GONE);
     }
 
     private void showIntro() {
@@ -392,14 +476,14 @@ public class MainActivity extends Activity {
         space(8);
         button(panel, "Open Instagram inbox", true, () -> navigate(BASE + "/direct/inbox/"));
         button(panel, "Browse a little", false, this::openFeed);
-        card(prefs.getInt("postLimit", 10) + " posts a session\n"
-            + prefs.getInt("sessionMinutes", 5) + " minutes a session\n"
+        card(prefs.getInt("sessionMinutes", 5) + " minutes a session\n"
             + prefs.getInt("dailyMinutes", 15) + " minutes of browsing a day\n"
             + "Then a 10-minute break.\n\n"
             + "Inbox does not spend that time.");
         panel.addView(note("Meta still sees the activity. Limits apply only inside Still."));
         markNav();
         status.setText(summary());
+        showRooms();
     }
 
     private void showLimit() {
@@ -435,7 +519,7 @@ public class MainActivity extends Activity {
         place = "settings";
         chrome(true);
         panel.addView(headline("Settings"));
-        choiceRow("Posts a session", "postLimit", new int[]{5, 10, 15, 20}, 10);
+        panel.addView(bodyCopy("Open someone's profile, then file them as a friend, an influencer, or a celebrity. The feed row chooses which of those to keep."));
         choiceRow("Minutes a session", "sessionMinutes", new int[]{2, 5, 10}, 5);
         choiceRow("Minutes a day", "dailyMinutes", new int[]{5, 15, 30, 60}, 15);
         space(12);
